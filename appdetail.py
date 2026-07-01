@@ -1778,6 +1778,64 @@ def main():
                     st.info("Data tidak tersedia untuk fitur download DO Balance per PIC.")
 
 
+    # =====================================================
+    # CRUD
+    # =====================================================
+
+
+    elif selected_doc_type == "CRUD":
+        st.subheader("🧩 Halaman CRUD Input Deadline")
+        st.info("Gunakan halaman ini untuk Create, Read, Update, Delete data PIC, ETA, Deadline DO, dan Deadline SI berdasarkan nomor dokumen.")
+
+        # --- Form CRUD ---
+        doc_number = st.text_input("Nomor Dokumen (PO / GRN / DO)")
+        pic_name = st.text_input("Nama PIC Procurement")
+        eta_po = st.date_input("ETA untuk PO")
+        deadline_do = st.date_input("Deadline DO untuk GRN")
+        deadline_si = st.date_input("Deadline SI untuk DO")
+
+        if "crud_data" not in st.session_state:
+            st.session_state["crud_data"] = pd.DataFrame(columns=["Nomor Dokumen","PIC","ETA_PO","Deadline_DO","Deadline_SI"])
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("💾 Simpan / Update"):
+                new_row = {
+                    "Nomor Dokumen": doc_number,
+                    "PIC": pic_name,
+                    "ETA_PO": eta_po,
+                    "Deadline_DO": deadline_do,
+                    "Deadline_SI": deadline_si
+                }
+                # cek apakah dokumen sudah ada
+                existing_index = st.session_state["crud_data"].index[
+                    st.session_state["crud_data"]["Nomor Dokumen"] == doc_number
+                ].tolist()
+                if existing_index:
+                    st.session_state["crud_data"].loc[existing_index[0]] = new_row
+                    st.success(f"✅ Data untuk {doc_number} berhasil diperbarui!")
+                else:
+                    st.session_state["crud_data"] = pd.concat(
+                        [st.session_state["crud_data"], pd.DataFrame([new_row])],
+                        ignore_index=True
+                    )
+                    st.success(f"✅ Data untuk {doc_number} berhasil ditambahkan!")
+
+        with col2:
+            if st.button("🗑️ Hapus Data"):
+                existing_index = st.session_state["crud_data"].index[
+                    st.session_state["crud_data"]["Nomor Dokumen"] == doc_number
+                ].tolist()
+                if existing_index:
+                    st.session_state["crud_data"].drop(existing_index[0], inplace=True)
+                    st.success(f"🗑️ Data untuk {doc_number} berhasil dihapus!")
+                else:
+                    st.warning("Nomor dokumen tidak ditemukan.")
+
+        # --- Read Data ---
+        st.markdown("### 📋 Daftar Data CRUD")
+        st.dataframe(st.session_state["crud_data"], use_container_width=True)
+
     # ---------- FOOTER INFO ----------
     with st.expander("ℹ️ Informasi Teknis Dashboard"):
         selected_report_date = (
