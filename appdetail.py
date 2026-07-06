@@ -960,7 +960,7 @@ def render_eta_histogram(df: pd.DataFrame, eta_col: str = "ETA_PO"):
 DB_FILE = "eta_deadline.db"
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect("sibima.db")
     cursor = conn.cursor()
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS po_eta (
@@ -975,19 +975,11 @@ def init_db():
     conn.commit()
     conn.close()
 
-def load_eta_data():
-    conn = sqlite3.connect(DB_FILE)
-    df = pd.read_sql("SELECT * FROM po_eta", conn)
-    conn.close()
-    for col in ["ETA_PO","Deadline_DO","Deadline_SI"]:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce")
-    return df
-
 def save_eta_data(nomor_dokumen, pic, eta_po, deadline_do, deadline_si):
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect("sibima.db")
     cursor = conn.cursor()
-    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # waktu input otomatis
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
     cursor.execute("""
     INSERT INTO po_eta (Nomor_Dokumen, PIC, ETA_PO, Deadline_DO, Deadline_SI, Timestamp)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -998,12 +990,19 @@ def save_eta_data(nomor_dokumen, pic, eta_po, deadline_do, deadline_si):
         Deadline_SI=excluded.Deadline_SI,
         Timestamp=excluded.Timestamp
     """, (nomor_dokumen, pic, str(eta_po), str(deadline_do), str(deadline_si), now))
+
     conn.commit()
     conn.close()
 
+def load_eta_data():
+    conn = sqlite3.connect("sibima.db")
+    df_po_eta = pd.read_sql_query("SELECT * FROM po_eta", conn)
+    conn.close()
+    return df_po_eta
+
 
 def delete_eta_data(nomor_dokumen):
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect("sibima.db")
     cursor = conn.cursor()
     cursor.execute("DELETE FROM po_eta WHERE Nomor_Dokumen=?", (nomor_dokumen,))
     conn.commit()
@@ -1064,7 +1063,7 @@ def main():
     # Pastikan kolom PIC dan Status sesuai
     #PO
     df_po_final = df_po_final.rename(columns={
-        "item_pic_procurement_name": "PIC Purchasing",
+        "item_pic_purchasing_name": "PIC Purchasing",
         "status_description": "Status",
         "date" : "transaction_date"
     })
@@ -1845,9 +1844,6 @@ def main():
     elif selected_doc_type == "CRUD":
         st.subheader("📌 CRUD ETA & Deadline")
 
-        # Inisialisasi DB
-        init_db()
-
         # Ambil data dari API
         df_po_api = df_po_final_f[
             ~df_po_final_f["Status"].isin(["Complete", "Draft"])
@@ -1859,7 +1855,8 @@ def main():
             df_po_api["Nomor_Dokumen"] = df_po_api["transaction_number"].astype(str).str.strip()
 
         # Ambil data ETA dari SQLite
-        df_po_eta = load_eta_data()
+        init_db()  # pastikan tabel ada
+        df_po_eta = load_eta_data()             
 
         # Merge data API dan ETA
         df_po_ed = pd.merge(df_po_api, df_po_eta, on="Nomor_Dokumen", how="left")
