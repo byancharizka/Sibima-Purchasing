@@ -1215,11 +1215,11 @@ def main():
                     metric_card("PIC Terbanyak", top_pic_po)
 
 
-                pr_summary = summarize_status(df_po_f, doc_col="No. PO", nominal_col="Nominal")
+                po_summary = summarize_status(df_po_f, doc_col="No. PO", nominal_col="Nominal")
 
                 with st.container(border=True):
                     st.subheader("🍩 Proporsi Nominal PO Balance per Status")
-                    render_status_pie(pr_summary, "Persentase Distribusi Nominal PO Balance")
+                    render_status_pie(po_summary, "Persentase Distribusi Nominal PO Balance")
 
             pic_summary_po = summarize_pic_status(df_po_f, "PIC Purchasing", "No. PO")
             with st.container(border=True):
