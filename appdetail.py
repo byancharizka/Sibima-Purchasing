@@ -11,6 +11,7 @@ import streamlit as st
 import plotly.graph_objects as go
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
+import sqlite3
 
 # =========================================================
 # 1) PAGE CONFIG - WAJIB PALING ATAS
@@ -346,7 +347,6 @@ def get_api_data_new(endpoint: str, source: str = "eas", start_date=None, end_da
 
 def load_all_data(start_date=None, end_date=None) -> dict[str, pd.DataFrame]:
     endpoint_map = {
-        "pr": ("pr-balance", {"Tgl. PR": "transaction_date"}),
         "po": ("po-balance", {"Tgl. PO": "transaction_date"}),
         "grn": ("grn-balance", {"Tgl. GRN": "transaction_date"}),
         "do": ("do-balance", {"Tgl. DO": "transaction_date"}),
@@ -373,6 +373,7 @@ def load_all_data_new(start_date=None, end_date=None) -> dict[str, pd.DataFrame]
         "pr": "purchase-requests",
         "po": "purchase-orders",
         "do": "delivery-orders",
+        "grn": "goods-receipt-notes",
     }
 
     result_new = {}
@@ -438,7 +439,7 @@ def apply_search_filter(
     working = df.copy()
     working = normalize_text_columns(
         working,
-        ["Status", "PIC Procurement", "PIC Purchasing", "PIC", "No. PR", "No. DO", "No. PUR", "No. Transaksi"]
+        ["Status", "PIC Purchasing", "PIC Purchasing", "PIC", "No. PR", "No. DO", "No. PUR", "No. Transaksi"]
     )
 
     # Filter nomor transaksi: mencari di semua kolom string
@@ -459,7 +460,7 @@ def apply_search_filter(
 
     # Filter PIC -> OR logic, bukan AND
     if search_pic:
-        pic_cols = [col for col in ["PIC Procurement", "PIC Purchasing", "PIC"] if col in working.columns]
+        pic_cols = [col for col in ["PIC Purchasing", "PIC Purchasing", "PIC"] if col in working.columns]
         if pic_cols:
             mask_pic = working[pic_cols].apply(
                 lambda col: col.str.contains(search_pic.strip(), case=False, na=False)
@@ -683,7 +684,7 @@ def render_pic_heatmap(df: pd.DataFrame, pic_col: str, date_col: str, doc_col: s
         coloraxis_showscale=False,   # 🔹 sembunyikan color bar
         coloraxis_colorbar=dict(title=None),  # 🔹 hilangkan teks "sum of Jumlah Transaksi"
         xaxis_title="Bulan",
-        yaxis_title="PIC Procurement",
+        yaxis_title="PIC Purchasing",
         margin=dict(l=100, r=40, t=60, b=120),
         height=500
         )
@@ -810,7 +811,7 @@ def render_pic_aging_bar(summary_df: pd.DataFrame):
 
     fig = px.bar(
     summary_df,
-    x="PIC Procurement",
+    x="PIC Purchasing",
     y="Average_Aging",   # 🔹 gunakan nama baru
     text="Average_Aging",
     color="Average_Aging",
@@ -882,7 +883,7 @@ def render_pic_sla_bar(summary_df: pd.DataFrame):
 
     fig = px.bar(
         summary_df,
-        x="PIC Procurement",
+        x="PIC Purchasing",
         y="SLA_Compliance",
         text="SLA_Compliance",
         color="SLA_Compliance",
@@ -955,8 +956,6 @@ def render_eta_histogram(df: pd.DataFrame, eta_col: str = "ETA_PO"):
         yaxis_title="Jumlah Dokumen"
     )
     st.plotly_chart(fig, use_container_width=True)
-
-import sqlite3
 
 DB_FILE = "eta_deadline.db"
 
@@ -1032,7 +1031,7 @@ def main():
         )
 
     with col_head2:
-        selected_doc_type = st.selectbox("Pilih Jenis Dokumen 📑", ["PR", "PO", "GRN", "DO", "CRUD"])
+        selected_doc_type = st.selectbox("Pilih Jenis Dokumen 📑", ["PO", "GRN", "CRUD"])
 
     with col_head3:
         search_number = st.text_input("Cari Nomor Transaksi 🔍", placeholder="No. PR / No. DO / No. NPR / No. PUR")
@@ -1041,7 +1040,7 @@ def main():
         search_status = st.text_input("Cari Status 🔍", placeholder="Complete / In Progress / Approved / Need Approve")
 
     with col_head5:
-        search_pic = st.text_input("Cari PIC 🔍", placeholder="PIC Procurement / PIC Purchasing / PIC PUR")
+        search_pic = st.text_input("Cari PIC 🔍", placeholder="PIC Purchasing")
 
     # ---------- LOAD DATA ----------
     if isinstance(selected_date_range, (tuple, list)) and len(selected_date_range) == 2:
@@ -1054,446 +1053,422 @@ def main():
         data_new = load_all_data_new(start_date=start_date, end_date=end_date)
 
     # ---------- ASSIGN DATAFRAME ----------
-    df_pr = data_old["pr"]
     df_po = data_old["po"]
     df_grn = data_old["grn"]
     df_do = data_old["do"]
-    df_npr = data_old["npr"]
     #df_pur = data_old["pur"]
 
-    df_pr_final = data_new["pr"]
     df_po_final = data_new["po"]
-    df_do_final = data_new["do"]
+    df_grn_final = data_new["grn"]
 
     # Pastikan kolom PIC dan Status sesuai
-    #PR
-    df_pr_final = df_pr_final.rename(columns={
-        "item_pic_procurement_name": "PIC Procurement",
-        "status_description": "Status"
-    })
     #PO
     df_po_final = df_po_final.rename(columns={
-        "item_pic_procurement_name": "PIC Procurement",
-        "status_description": "Status"
+        "item_pic_procurement_name": "PIC Purchasing",
+        "status_description": "Status",
+        "date" : "transaction_date"
     })
-    #DO
-    df_do_final = df_do_final.rename(columns={
-        "item_pic_procurement_name": "PIC Procurement",
+    #GRN
+    df_grn_final = df_grn_final.rename(columns={
+        "item_pic_procurement_name": "PIC Purchasing",
         "status_description": "Status"
     })
 
-    df_do = df_do.rename(columns={
-        "Status DO": "Status"
+    df_grn = df_grn.rename(columns={
+        "Status GRN": "Status"
     })
 
     # Pastikan kolom tanggal sudah dalam format datetime
-    #PR
-    df_pr_final = safe_to_datetime(df_pr_final, "transaction_date")
-    df_pr_final = safe_to_datetime(df_pr_final, "date_approved")
-    df_pr_final = safe_to_datetime(df_pr_final, "date_inprogress")
-    df_pr_final = safe_to_datetime(df_pr_final, "date_complete")
-    #DO
-    df_do_final = safe_to_datetime(df_do_final, "transaction_date")
-    df_do_final = safe_to_datetime(df_do_final, "date_approved")
-    df_do_final = safe_to_datetime(df_do_final, "date_inprogress")
-    df_do_final = safe_to_datetime(df_do_final, "date_complete")
+    #PO
+    df_po_final = safe_to_datetime(df_po_final, "transaction_date")
+    df_po_final = safe_to_datetime(df_po_final, "date_approved")
+    df_po_final = safe_to_datetime(df_po_final, "date_inprogress")
+    df_po_final = safe_to_datetime(df_po_final, "date_complete")
+    #GRN
+    df_grn_final = safe_to_datetime(df_grn_final, "transaction_date")
+    df_grn_final = safe_to_datetime(df_grn_final, "date_approved")
+    df_grn_final = safe_to_datetime(df_grn_final, "date_inprogress")
+    df_grn_final = safe_to_datetime(df_grn_final, "date_complete")
 
     # ---------- DEFAULT SAFE COPY ----------
-    df_pr_f = df_pr.copy()
     df_po_f = df_po.copy()
     df_grn_f = df_grn.copy()
     df_do_f = df_do.copy()
-    df_npr_f = df_npr.copy()
     #df_pur_f = df_pur.copy()
-    df_pr_final_f = df_pr_final.copy()
     df_po_final_f = df_po_final.copy()
-    df_do_final_f = df_do_final.copy()
+    df_grn_final_f = df_grn_final.copy()
 
     # ---------- DATE FILTER ----------
     if isinstance(selected_date_range, (tuple, list)) and len(selected_date_range) == 2:
         report_start_date, report_end_date = selected_date_range
-        df_pr_f = apply_cumulative_filter(df_pr_f, report_end_date)
         df_po_f = apply_cumulative_filter(df_po_f, report_end_date)
         df_grn_f = apply_cumulative_filter(df_grn_f, report_end_date)
         df_do_f = apply_cumulative_filter(df_do_f, report_end_date)
-        df_npr_f = apply_cumulative_filter(df_npr_f, report_end_date)
         #df_pur_f = apply_cumulative_filter(df_pur_f, report_end_date)
-        df_pr_final_f = apply_cumulative_filter(df_pr_final_f, report_end_date)
         df_po_final_f = apply_cumulative_filter(df_po_final_f, report_end_date)
-        df_do_final_f = apply_cumulative_filter(df_do_final_f, report_end_date)
+        df_grn_final_f = apply_cumulative_filter(df_grn_final_f, report_end_date)
 
         # 🔹 Dataset baru (PR Final) pakai realisasi
-        df_pr_f_real = apply_realization_filter(df_pr_f, report_start_date, report_end_date)
-        df_pr_final_real = apply_realization_filter(df_pr_final, report_start_date, report_end_date)
-        df_do_final_real = apply_realization_filter(df_do_final, report_start_date, report_end_date)
+        df_po_final_real = apply_realization_filter(df_po_final, report_start_date, report_end_date)
+        df_grn_final_real = apply_realization_filter(df_grn_final, report_start_date, report_end_date)
 
     # ---------- SEARCH FILTER ----------
-    df_pr_f = apply_search_filter(df_pr_f, search_number, search_status, search_pic)
     df_po_f = apply_search_filter(df_po_f, search_number, search_status, search_pic)
     df_grn_f = apply_search_filter(df_grn_f, search_number, search_status, search_pic)
     df_do_f = apply_search_filter(df_do_f, search_number, search_status, search_pic)
-    df_npr_f = apply_search_filter(df_npr_f, search_number, search_status, search_pic)
     #df_pur_f = apply_search_filter(df_pur_f, search_number, search_status, search_pic)
-    df_pr_final_real = apply_search_filter(df_pr_final_real, search_number, search_status, search_pic)
+    df_po_final_real = apply_search_filter(df_po_final_real, search_number, search_status, search_pic)
 
 
     # ---------- ENSURE IMPORTANT COLUMNS ----------
-    df_pr_f = ensure_columns(df_pr_f, ["Nominal", "No. PR", "Status", "PIC Procurement"])
     df_po_f = ensure_columns(df_po_f, ["Nominal"])
     df_grn_f = ensure_columns(df_grn_f, ["Nominal"])
     df_do_f = ensure_columns(df_do_f, ["Nominal", "No. DO", "PIC Purchasing"])
-    df_npr_f = ensure_columns(df_npr_f, ["No. Transaksi"])
     #df_pur_f = ensure_columns(df_pur_f, ["No. PUR", "PIC", "Status"])
-    df_pr_final_real = ensure_columns(df_pr_final_real, ["PIC Procurement", "transaction_number","Status", "price", "quantity", "discount", "transaction_total", "tax1_percentage", "tax2_percentage"])
-    df_do_final_real = ensure_columns(df_do_final_real, ["PIC Procurement", "transaction_number","Status", "price", "quantity", "discount", "transaction_total", "tax1_percentage", "tax2_percentage"])
+    df_po_final_real = ensure_columns(df_po_final_real, ["PIC Purchasing", "transaction_number","Status", "price", "quantity", "discount", "transaction_total", "tax1_percentage", "tax2_percentage"])
+    df_grn_final_real = ensure_columns(df_grn_final_real, ["PIC Purchasing", "transaction_number","Status", "price", "quantity", "discount", "transaction_total", "tax1_percentage", "tax2_percentage"])
 
-    df_pr_f = safe_to_numeric(df_pr_f, ["Nominal"])
     df_po_f = safe_to_numeric(df_po_f, ["Nominal"])
     df_grn_f = safe_to_numeric(df_grn_f, ["Nominal"])
     df_do_f = safe_to_numeric(df_do_f, ["Nominal"])
-    #df_pr_final_real = safe_to_numeric(df_pr_final_real, ["price", "discount", "quantity", "tax1_percentage", "tax2_percentage"])
-    df_pr_final_real= safe_to_numeric(df_pr_final_real, ["item_price", "item_discount", "item_quantity", "item_tax1_percentage", "item_tax2_percentage"])
-    df_do_final_real= safe_to_numeric(df_do_final_real, ["item_price", "item_discount", "item_quantity", "item_tax1_percentage", "item_tax2_percentage"])
+    df_po_final_real= safe_to_numeric(df_po_final_real, ["item_price", "item_discount", "item_quantity", "item_tax1_percentage", "item_tax2_percentage"])
+    df_grn_final_real= safe_to_numeric(df_grn_final_real, ["item_price", "item_discount", "item_quantity", "item_tax1_percentage", "item_tax2_percentage"])
     
     # ---------- METRICS ----------
-    total_pr_unpr = safe_sum(df_pr_f, "Nominal")
     total_po_unpr = safe_sum(df_po_f, "Nominal")
     total_grn_unpr = safe_sum(df_grn_f, "Nominal")
     total_do_unpr = safe_sum(df_do_f, "Nominal")
-    #total_pr = safe_sum(df_pr_final_real, "transaction_total")
 
-    df_pr_final_real = normalize_text_columns(df_pr_final_real, ["item_PIC_Procurement"])
-    df_do_final_real = normalize_text_columns(df_do_final_real, ["item_PIC_Procurement"])
+    df_po_final_real = normalize_text_columns(df_po_final_real, ["item_PIC_Purchasing"])
+    df_grn_final_real = normalize_text_columns(df_grn_final_real, ["item_PIC_Purchasing"])
 
 
-    df_pr_final_real["disc_per_unit"] = df_pr_final_real["item_price"] * (df_pr_final_real["item_discount"] / 100)
-    df_pr_final_real["tax_unit"] = (df_pr_final_real["item_price"] - df_pr_final_real["disc_per_unit"]) * (df_pr_final_real["item_tax1_percentage"] / 100)
-    df_pr_final_real["net_price_unit"] = df_pr_final_real["item_price"] - df_pr_final_real["disc_per_unit"] + df_pr_final_real["tax_unit"]
-    df_pr_final_real["total_pr_row"] = df_pr_final_real["item_quantity"] * df_pr_final_real["net_price_unit"]
-    total_pr = df_pr_final_real["total_pr_row"].sum()
+    df_po_final_real["disc_per_unit"] = df_po_final_real["item_price"] * (df_po_final_real["item_discount"] / 100)
+    df_po_final_real["tax_unit"] = (df_po_final_real["item_price"] - df_po_final_real["disc_per_unit"]) * (df_po_final_real["item_tax1_percentage"] / 100)
+    df_po_final_real["net_price_unit"] = df_po_final_real["item_price"] - df_po_final_real["disc_per_unit"] + df_po_final_real["tax_unit"]
+    df_po_final_real["total_po_row"] = df_po_final_real["item_quantity"] * df_po_final_real["net_price_unit"]
+    total_po = df_po_final_real["total_po_row"].sum()
 
-    df_do_final_real["disc_per_unit"] = df_do_final_real["item_price"] * (df_do_final_real["item_discount"] / 100)
-    df_do_final_real["tax_unit"] = (df_do_final_real["item_price"] - df_do_final_real["disc_per_unit"]) * (df_do_final_real["item_tax1_percentage"] / 100)
-    df_do_final_real["net_price_unit"] = df_do_final_real["item_price"] - df_do_final_real["disc_per_unit"] + df_do_final_real["tax_unit"]
-    df_do_final_real["total_do_row"] = df_do_final_real["item_quantity"] * df_do_final_real["net_price_unit"]
-    total_do = df_do_final_real["total_do_row"].sum()
+    df_grn_final_real["disc_per_unit"] = df_grn_final_real["item_price"] * (df_grn_final_real["item_discount"] / 100)
+    df_grn_final_real["tax_unit"] = (df_grn_final_real["item_price"] - df_grn_final_real["disc_per_unit"]) * (df_grn_final_real["item_tax1_percentage"] / 100)
+    df_grn_final_real["net_price_unit"] = df_grn_final_real["item_price"] - df_grn_final_real["disc_per_unit"] + df_grn_final_real["tax_unit"]
+    df_grn_final_real["total_grn_row"] = df_grn_final_real["item_quantity"] * df_grn_final_real["net_price_unit"]
+    total_grn = df_grn_final_real["total_grn_row"].sum()
 
-    #df_do_final_real["disc_per_unit"] = df_do_final_real["item_price"] * (df_do_final_real["item_discount"] / 100)
-    #df_do_final_real["tax_unit"] = (df_do_final_real["item_price"] - df_do_final_real["disc_per_unit"]) * (df_do_final_real["item_tax1_percentage"] / 100)
-    #df_do_final_real["tax_unit"] = df_do_final_real["item_tax1_value"] + df_do_final_real["item_tax1_value"]
-    #df_do_final_real["net_price_unit"] = df_do_final_real["item_price"] - df_do_final_real["disc_per_unit"] + df_do_final_real["tax_unit"]
-    #df_do_final_real["net_price_unit"] = df_do_final_real["item_price"] - df_do_final_real["disc_per_unit"]
-    #df_do_final_real["total_do_row"] = df_do_final_real["item_quantity"] * df_do_final_real["net_price_unit"]
-    total_do = df_do_final_real["total_do_row"].sum()
+    #df_grn_final_real["disc_per_unit"] = df_grn_finalReal["item_price"] * (df_grn_finalReal["item_discount"] / 100)
+    #df_grn_final_real["tax_unit"] = (df_grn_final_real["item_price"] - df_grn_final_real["disc_per_unit"]) * (df_grn_final_real["item_tax1_percentage"] / 100)
+    #df_grn_final_real["tax_unit"] = df_grn_final_real["item_tax1_value"] + df_grn_final_real["item_tax1_value"]
+    #df_grn_final_real["net_price_unit"] = df_grn_final_real["item_price"] - df_grn_final_real["disc_per_unit"] + df_grn_final_real["tax_unit"]
+    #df_grn_final_real["net_price_unit"] = df_grn_final_real["item_price"] - df_grn_final_real["disc_per_unit"]
+    #df_grn_final_real["total_grn_row"] = df_grn_final_real["item_quantity"] * df_grn_final_real["net_price_unit"]
+    total_grn = df_grn_final_real["total_grn_row"].sum()
 
-    total_pr_count = safe_unique_count(df_pr_final_real, "transaction_number")
-    total_pr_balance_count = safe_unique_count(df_pr_f, "No. PR")
-    total_pr_rows = len(df_pr_final_real)
-    total_pr_balance_rows = len(df_pr_f)
-    total_do_count = safe_unique_count(df_do_final_real, "transaction_number")
-    total_do_balance_count = safe_unique_count(df_do_f, "No. DO")
-    total_do_rows = len(df_do_final_real)
-    total_do_balance_rows = len(df_do_f)
-    total_npr_count = safe_unique_count(df_npr_f, "No. Transaksi")
-    total_npr_rows = len(df_npr_f)
+    total_po_count = safe_unique_count(df_po_final_real, "transaction_number")
+    total_po_balance_count = safe_unique_count(df_po_f, "No. PO")
+    total_po_rows = len(df_po_final_real)
+    total_po_balance_rows = len(df_po_f)
+    total_grn_count = safe_unique_count(df_grn_final_real, "transaction_number")
+    total_grn_balance_count = safe_unique_count(df_grn_f, "No. GRN")
+    total_grn_rows = len(df_grn_final_real)
+    total_grn_balance_rows = len(df_grn_f)
 
-    avg_nominal_do = safe_mean(df_do_f, "Nominal")
+    avg_nominal_grn = safe_mean(df_grn_f, "Nominal")
 
-    top_pic_pr = get_top_pic(df_pr_f, "PIC Procurement", "No. PR")
-    top_pic_do = get_top_pic(df_do_f, "PIC Procurement", "No. DO")
+    top_pic_po = get_top_pic(df_po_f, "PIC Purchasing", "No. PO")
+    top_pic_grn = get_top_pic(df_grn_f, "PIC Purchasing", "No. GRN")
     #top_pic_pur = get_top_pic(df_pur_f, "PIC", "No. PUR")
 
     # ---------- LAYOUT ----------
     col_kiri, col_tengah, col_kanan = st.columns([1, 1, 1], gap="small")
 
     # =====================================================
-    # LEFT - PR
+    # LEFT - PO
     # =====================================================
-    if selected_doc_type == "PR":
+    if selected_doc_type == "PO":
         with col_kiri:
             with st.container(border=True):
-                st.subheader("📊 Detail PR")
+                st.subheader("📊 Detail PO")
 
                 c1, c2 = st.columns(2)
                 with c1:
-                    metric_card("Total PR", f"Rp {total_pr:,.0f}")
+                    metric_card("Total PO", f"Rp {total_po:,.0f}")
                 with c2:
-                    metric_card("PR Balance", f"Rp {total_pr_unpr:,.0f}")
+                    metric_card("PO Balance", f"Rp {total_po:,.0f}")
 
                 c1, c2 = st.columns(2)
                 with c1:
-                    metric_card("Total Transaksi PR", f"{total_pr_count:,}")
+                    metric_card("Total Transaksi PO", f"{total_po_count:,}")
                 with c2:
-                    metric_card("Total Transaksi PR Balance", f"{total_pr_balance_count:,}")
+                    metric_card("Total Transaksi PO Balance", f"{total_po_balance_count:,}")
 
 
-                #st.write("Kolom:", df_pr_final_f.columns)
-                #st.write("Contoh tanggal:", df_pr_final_f["transaction_date"].head())
-                #st.write(df_pr_final_f[["item_price", "item_discount", "item_quantity"]].head())
+                #st.write("Kolom:", df_po_final_f.columns)
+                #st.write("Contoh tanggal:", df_po_final_f["transaction_date"].head())
+                #st.write(df_po_final_f[["item_price", "item_discount", "item_quantity"]].head())
 
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    metric_card("Total Item PR", f"{total_pr_rows:,}")
+                    metric_card("Total Item PO", f"{total_po_rows:,}")
                 with c2:
-                    metric_card("Total Item PR Balance", total_pr_balance_rows)
+                    metric_card("Total Item PO Balance", total_po_balance_rows)
                 with c3:
-                    metric_card("PIC Terbanyak", top_pic_pr)
+                    metric_card("PIC Terbanyak", top_pic_po)
 
 
-                pr_summary = summarize_status(df_pr_f, doc_col="No. PR", nominal_col="Nominal")
+                pr_summary = summarize_status(df_po_f, doc_col="No. PO", nominal_col="Nominal")
 
                 with st.container(border=True):
-                    st.subheader("🍩 Proporsi Nominal PR Balance per Status")
-                    render_status_pie(pr_summary, "Persentase Distribusi Nominal PR Balance")
+                    st.subheader("🍩 Proporsi Nominal PO Balance per Status")
+                    render_status_pie(pr_summary, "Persentase Distribusi Nominal PO Balance")
 
-            pic_summary_pr = summarize_pic_status(df_pr_f, "PIC Procurement", "No. PR")
+            pic_summary_po = summarize_pic_status(df_po_f, "PIC Purchasing", "No. PO")
             with st.container(border=True):
-                st.subheader("👤 Analisis Transaksi PR Balance per PIC Procurement & per Status")
+                st.subheader("👤 Analisis Transaksi PO Balance per PIC Purchasing & per Status")
                 render_pic_bar(
-                    summary_df=pic_summary_pr,
-                    x_col="PIC Procurement",
+                    summary_df=pic_summary_po,
+                    x_col="PIC Purchasing",
                     y_col="Jumlah_Doc",
                     color_col="Status",
                 )
 
             with st.container(border=True):
-                st.subheader("🔥 Heatmap PR Balance - Aktivitas PIC Procurement")
-                render_pic_heatmap(df_pr_f, "PIC Procurement", "transaction_date", "No. PR", "Heatmap Aktivitas PIC Procurement per Bulan")
+                st.subheader("🔥 Heatmap PO Balance - Aktivitas PIC Purchasing")
+                render_pic_heatmap(df_po_f, "PIC Purchasing", "transaction_date", "No. PO", "Heatmap Aktivitas PIC Purchasing per Bulan")
 
-            # Download PR Balance by status
+            # Download PO Balance by status
             with st.container(border=True):
-                st.subheader("📥 Download Data PR Balance (Periode & Status)")
+                st.subheader("📥 Download Data PO Balance (Periode & Status)")
 
-                if not df_pr_final_f.empty and "Status" in df_pr_final_f.columns:
-                    all_statuses = sorted([s for s in df_pr_final_f["Status"].dropna().astype(str).unique().tolist() if s.strip()])
+                if not df_po_final_f.empty and "Status" in df_po_final_f.columns:
+                    all_statuses = sorted([s for s in df_po_final_f["Status"].dropna().astype(str).unique().tolist() if s.strip()])
                     selected_statuses = st.multiselect(
                         "Pilih Status untuk di-download:",
                         all_statuses,
                         default=all_statuses,
-                        key="pr_balance_status_export"
+                        key="po_balance_status_export"
                     )
 
-                    df_download_pr_balance = df_pr_final_f[df_pr_final_f["Status"].isin(selected_statuses)].copy()
+                    df_download_po_balance = df_po_final_f[df_po_final_f["Status"].isin(selected_statuses)].copy()
 
-                    if not df_download_pr_balance.empty:
+                    if not df_download_po_balance.empty:
                         st.download_button(
-                            label=f"⬇️Download {len(df_download_pr_balance):,} Baris Data (Filtered).xlsx",
-                            data=to_excel_bytes(df_download_pr_balance, sheet_name="Data_PR"),
-                            file_name=f"Data_PR_Export_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                            label=f"⬇️Download {len(df_download_po_balance):,} Baris Data (Filtered).xlsx",
+                            data=to_excel_bytes(df_download_po_balance, sheet_name="Data_PO"),
+                            file_name=f"Data_PO_Export_{datetime.now().strftime('%Y%m%d')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
-                        st.caption(f"Menampilkan {len(df_download_pr_balance):,} baris data yang akan di-download.")
+                        st.caption(f"Menampilkan {len(df_download_po_balance):,} baris data yang akan di-download.")
                     else:
                         st.warning("Tidak ada data yang sesuai dengan filter yang dipilih.")
                 else:
-                    st.info("Data PR Balance tidak tersedia untuk export.")
+                    st.info("Data PO Balance tidak tersedia untuk export.")
 
-            # Download per PIC PR Balance
+            # Download per PIC PO Balance
             with st.container(border=True):
-                st.subheader("📥 Download Data PR Balance per PIC")
+                st.subheader("📥 Download Data PO Balance per PIC")
 
-                if not df_pr_final_f.empty and "PIC Procurement" in df_pr_final_f.columns:
+                if not df_po_final_f.empty and "PIC Purchasing" in df_po_final_f.columns:
                     # Filter status hanya Need Approved, Approved, In Progress
-                    df_filtered_status = df_pr_final_f[
-                        df_pr_final_f["Status"].isin(["Need Approved", "Approved", "In Progress"])
+                    df_filtered_status = df_po_final_f[
+                        df_po_final_f["Status"].isin(["Need Approved", "Approved", "In Progress"])
                     ].copy()
 
                     # Tambahkan opsi "Semua"
                     options = ["Semua"] + sorted(
-                        df_filtered_status["PIC Procurement"].fillna("Unassigned").astype(str).unique().tolist()
+                        df_filtered_status["PIC Purchasing"].fillna("Unassigned").astype(str).unique().tolist()
                     )
 
-                    selected_pic = st.selectbox("Pilih PIC Procurement:", options, key="pr_balance_pic_select")
+                    selected_pic = st.selectbox("Pilih PIC Purchasing:", options, key="po_balance_pic_select")
 
                     # Jika pilih "Semua", ambil semua data sesuai status
                     if selected_pic == "Semua":
                         filtered = df_filtered_status.copy()
                     else:
                         filtered = df_filtered_status[
-                            df_filtered_status["PIC Procurement"].fillna("Unassigned").astype(str) == selected_pic
+                            df_filtered_status["PIC Purchasing"].fillna("Unassigned").astype(str) == selected_pic
                         ].copy()
 
                     st.download_button(
                         label=f"⬇️Download Data {selected_pic}.xlsx",
-                        data=to_excel_bytes(filtered, sheet_name="Data_PR_Balance"),
-                        file_name=f"Data_PR_balance_{selected_pic}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        data=to_excel_bytes(filtered, sheet_name="Data_PO_Balance"),
+                        file_name=f"Data_PO_balance_{selected_pic}_{datetime.now().strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                     st.caption(f"Menampilkan {len(filtered):,} baris data yang akan di-download.")
                 else:
-                    st.info("Data tidak tersedia untuk fitur download PR Balance per PIC.")
+                    st.info("Data tidak tersedia untuk fitur download PO Balance per PIC.")
 
     # =====================================================
     # MID PR
     # =====================================================
         with col_tengah:
 
-            # 🔹 Filter hanya PR yang sudah punya tanggal inprogress atau complete
-            #Aging PR
-            #df_pr_final_valid = df_pr_final_real[
-            #df_pr_final_real["date_inprogress"].notna() | df_pr_final_real["date_complete"].notna()
+            # 🔹 Filter hanya PO yang sudah punya tanggal inprogress atau complete
+            #Aging PO
+            #df_po_final_valid = df_po_final_real[
+            #df_po_final_real["date_inprogress"].notna() | df_po_final_real["date_complete"].notna()
             #].copy()
-            df_pr_final_valid = df_pr_final_real[
-            df_pr_final_real["Status"].isin(["Approved", "In Progress", "Complete"])
+            df_po_final_valid = df_po_final_real[
+            df_po_final_real["Status"].isin(["Approved", "In Progress", "Complete"])
             ].copy()
-            df_pr_final_valid = apply_search_filter(df_pr_final_valid, search_number, search_status, search_pic)
+            df_po_final_valid = apply_search_filter(df_po_final_valid, search_number, search_status, search_pic)
 
-            #Aging PR Balance
-            # Filter PR Balance hanya untuk status aktif (exclude Complete & Draft)
-            df_pr_valid = df_pr_final_f[
-            ~df_pr_final_f["Status"].isin(["Complete", "Draft"])
+            #Aging PO Balance
+            # Filter PO Balance hanya untuk status aktif (exclude Complete & Draft)
+            df_po_valid = df_po_final_f[
+            ~df_po_final_f["Status"].isin(["Complete", "Draft"])
             ].copy()
-            df_pr_valid = apply_search_filter(df_pr_valid, search_number, search_status, search_pic)
+            df_po_valid = apply_search_filter(df_po_valid, search_number, search_status, search_pic)
 
 
-            # Lanjutkan proses aging hanya untuk PR yang valid
-            #Aging PR
-            #df_pr_final_valid = calculate_aging(df_pr_final_valid, "transaction_date")
-            df_pr_final_valid = calculate_aging(df_pr_final_valid, "transaction_date", prefer="approved")
-            df_pr_final_valid = categorize_aging(df_pr_final_valid)
-            #Aging PR Balance
-            #df_pr_valid = calculate_aging(df_pr_valid, "transaction_date")
-            df_pr_valid = calculate_aging(df_pr_valid, "transaction_date", prefer="approved")
-            df_pr_valid = categorize_aging(df_pr_valid)
-            #df_pr_valid = df_pr_valid.drop_duplicates(subset=["transaction_number"])
+            # Lanjutkan proses aging hanya untuk PO yang valid
+            #Aging PO
+            #df_po_final_valid = calculate_aging(df_po_final_valid, "transaction_date")
+            df_po_final_valid = calculate_aging(df_po_final_valid, "transaction_date", prefer="approved")
+            df_po_final_valid = categorize_aging(df_po_final_valid)
+            #Aging PO Balance
+            #df_po_valid = calculate_aging(df_po_valid, "transaction_date")
+            df_po_valid = calculate_aging(df_po_valid, "transaction_date", prefer="approved")
+            df_po_valid = categorize_aging(df_po_valid)
+            #df_po_valid = df_po_valid.drop_duplicates(subset=["transaction_number"])
 
-            # Filter hanya PR valid aktif, exclude Draft
-            df_pr_final_valid = df_pr_final_valid[
-            ~df_pr_final_valid["Status"].str.contains("Draft", case=False, na=False)
+            # Filter hanya PO valid aktif, exclude Draft
+            df_po_final_valid = df_po_final_valid[
+            ~df_po_final_valid["Status"].str.contains("Draft", case=False, na=False)
             ].copy()
-            # Filter hanya PR aktif, exclude Draft
-            #df_pr_valid = df_pr_valid[
-            #~df_pr_valid["Status"].str.contains("Draft", case=False, na=False)
+            # Filter hanya PO aktif, exclude Draft
+            #df_po_valid = df_po_valid[
+            #~df_po_valid["Status"].str.contains("Draft", case=False, na=False)
             #].copy()
 
             with st.container(border=True):
-                st.subheader("⏳ Distribusi Aging PR")
-                render_aging_bar(df_pr_final_valid, "transaction_number", chart_key="aging_pr")
+                st.subheader("⏳ Distribusi Aging PO")
+                render_aging_bar(df_po_final_valid, "transaction_number", chart_key="aging_po")
 
             with st.container(border=True):
-                st.subheader("⏳ Distribusi Aging PR Balance")
-                render_aging_bar(df_pr_valid, "transaction_number", chart_key="aging_pr_outstanding")
+                st.subheader("⏳ Distribusi Aging PO Balance")
+                render_aging_bar(df_po_valid, "transaction_number", chart_key="aging_po_outstanding")
 
-                pic_aging_summary = summarize_pic_aging(df_pr_valid, "PIC Procurement", "transaction_number")
-                pic_aging_summary_final = summarize_pic_aging(df_pr_final_valid, "PIC Procurement", "transaction_number")
+                pic_aging_summary = summarize_pic_aging(df_po_valid, "PIC Purchasing", "transaction_number")
+                pic_aging_summary_final = summarize_pic_aging(df_po_final_valid, "PIC Purchasing", "transaction_number")
 
             with st.container(border=True):
-                st.subheader("👥 Rata-rata Proses PR")
+                st.subheader("👥 Rata-rata Proses PO")
                 #st.dataframe(pic_aging_summary, use_container_width=True, hide_index=True)
                 render_pic_aging_bar(pic_aging_summary_final)
 
             with st.container(border=True):
-                st.subheader("👥 Rata-rata Proses PR Balance")
+                st.subheader("👥 Rata-rata Proses PO Balance")
                 #st.dataframe(pic_aging_summary, use_container_width=True, hide_index=True)
                 render_pic_aging_bar(pic_aging_summary)
 
             # Download per Category PR Aging
             with st.container(border=True):
-                st.subheader("📥 Download Data per Categori Aging PR")
+                st.subheader("📥 Download Data per Categori Aging PO")
 
-                if not df_pr_final_valid.empty:
-                    # Filter data aging PR berdasarkan kategori yang dipilih
-                    selected_category_pr = st.selectbox(
-                        "Pilih kategori aging PR untuk diunduh 📂",
+                if not df_po_final_valid.empty:
+                    # Filter data aging PO berdasarkan kategori yang dipilih
+                    selected_category_po = st.selectbox(
+                        "Pilih kategori aging PO untuk diunduh 📂",
                         ["Semua", "0-30 hari", "31-60 hari", "61-90 hari", ">90 hari"]
                     )
 
                     # Jika bukan 'Semua', filter sesuai kategori
-                    if selected_category_pr != "Semua":
-                        df_pr_filtered = df_pr_final_valid[
-                            df_pr_final_valid["Aging Category"] == selected_category_pr
+                    if selected_category_po != "Semua":
+                        df_po_filtered = df_po_final_valid[
+                            df_po_final_valid["Aging Category"] == selected_category_po
                         ].copy()
                     else:
-                        df_pr_filtered = df_pr_final_valid.copy()
+                        df_po_filtered = df_po_final_valid.copy()
 
                     # Tombol download
                     st.download_button(
-                    label=f"⬇️Download Data PR Aging ({selected_category_pr})",
-                    data=to_excel_bytes(df_pr_filtered, sheet_name="PR Aging"),
-                    file_name=f"PR_Aging_{selected_category_pr.replace(' ', '_')}.xlsx",
+                    label=f"⬇️Download Data PO Aging ({selected_category_po})",
+                    data=to_excel_bytes(df_po_filtered, sheet_name="PO Aging"),
+                    file_name=f"PO_Aging_{selected_category_po.replace(' ', '_')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"download_pr_aging_{selected_category_pr}"   # 🔹 key unik
+                    key=f"download_po_aging_{selected_category_po}"   # 🔹 key unik
                     )
 
                 else:
-                    st.info("Data tidak tersedia untuk fitur download per Category Aging PR.")
+                    st.info("Data tidak tersedia untuk fitur download per Category Aging PO.")
 
-            # Download per Category PR Balance Aging
+            # Download per Category PO Balance Aging
             with st.container(border=True):
-                st.subheader("📥 Download Data per Categori Aging PR Balance")
+                st.subheader("📥 Download Data per Categori Aging PO Balance")
 
-                if not df_pr_valid.empty:
-                    # Filter data aging PR berdasarkan kategori yang dipilih
+                if not df_po_valid.empty:
+                    # Filter data aging PO berdasarkan kategori yang dipilih
                     selected_category_balance = st.selectbox(
-                        "Pilih kategori aging PR Balance untuk diunduh 📂",
+                        "Pilih kategori aging PO Balance untuk diunduh 📂",
                         ["Semua", "0-30 hari", "31-60 hari", "61-90 hari", ">90 hari"]
                     )
 
                     # Jika bukan 'Semua', filter sesuai kategori
                     if selected_category_balance != "Semua":
-                        df_balance_filtered = df_pr_valid[
-                            df_pr_valid["Aging Category"] == selected_category_balance
+                        df_balance_filtered = df_po_valid[
+                            df_po_valid["Aging Category"] == selected_category_balance
                         ].copy()
                     else:
-                        df_balance_filtered = df_pr_valid.copy()
+                        df_balance_filtered = df_po_valid.copy()
 
                     # Tombol download
                     st.download_button(
-                    label=f"⬇️Download Data PR Balance Aging ({selected_category_balance})",
-                    data=to_excel_bytes(df_balance_filtered, sheet_name="PR Balance Aging"),
-                    file_name=f"PR_Balance_Aging_{selected_category_balance.replace(' ', '_')}.xlsx",
+                    label=f"⬇️Download Data PO Balance Aging ({selected_category_balance})",
+                    data=to_excel_bytes(df_balance_filtered, sheet_name="PO Balance Aging"),
+                    file_name=f"PO_Balance_Aging_{selected_category_balance.replace(' ', '_')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"download_pr_balance_{selected_category_balance}"   # 🔹 key unik
+                    key=f"download_po_balance_{selected_category_balance}"   # 🔹 key unik
                     )
 
                 else:
-                    st.info("Data tidak tersedia untuk fitur download per Category Aging PR Balance.")
+                    st.info("Data tidak tersedia untuk fitur download per Category Aging PO Balance.")
 
 
     # =====================================================
-    # RIGHT - PR
+    # RIGHT - PO
     # =====================================================
         with col_kanan:
             with st.container(border=True):
-                st.subheader("📏 SLA Compliance PR")
-                render_sla_gauge(df_pr_final_valid, threshold=5, title="SLA Compliance PR")
+                st.subheader("📏 SLA Compliance PO")
+                render_sla_gauge(df_po_final_valid, threshold=5, title="SLA Compliance PO")
 
             with st.container(border=True):
-                st.subheader("📏 SLA Compliance PR Balance")
-                render_sla_gauge(df_pr_valid, threshold=5, title="SLA Compliance PR Balance")
+                st.subheader("📏 SLA Compliance PO Balance")
+                render_sla_gauge(df_po_valid, threshold=5, title="SLA Compliance PO Balance")
 
-            pic_sla_summary = summarize_pic_sla(df_pr_final_valid, "PIC Procurement", "transaction_number", threshold=5)
+            pic_sla_summary = summarize_pic_sla(df_po_final_valid, "PIC Purchasing", "transaction_number", threshold=5)
 
             with st.container(border=True):
-                st.subheader("📏 SLA Compliance per PIC Procurement")
+                st.subheader("📏 SLA Compliance per PIC Purchasing")
                 #st.dataframe(pic_sla_summary, use_container_width=True, hide_index=True)
                 render_pic_sla_bar(pic_sla_summary)
 
             with st.container(border=True):
                 st.subheader("📈 Trend SLA")
-                render_sla_trend(df_pr_final_valid, threshold=5, date_col="transaction_date")
+                render_sla_trend(df_po_final_valid, threshold=5, date_col="transaction_date")
 
 
-            # Download PR by period & status
+            # Download PO by period & status
             with st.container(border=True):
-                st.subheader("📥 Download Data PR (Periode & Status)")
+                st.subheader("📥 Download Data PO (Periode & Status)")
 
-                if not df_pr_final_real.empty and "Status" in df_pr_final_real.columns:
-                    all_statuses = sorted([s for s in df_pr_final_real["Status"].dropna().astype(str).unique().tolist() if s.strip()])
+                if not df_po_final_real.empty and "Status" in df_po_final_real.columns:
+                    all_statuses = sorted([s for s in df_po_final_real["Status"].dropna().astype(str).unique().tolist() if s.strip()])
                     selected_statuses = st.multiselect(
                         "Pilih Status untuk di-download:",
                         all_statuses,
                         default=all_statuses,
-                        key="pr_status_export"
+                        key="po_status_export"
                     )
 
-                    df_download = df_pr_final_real[df_pr_final_real["Status"].isin(selected_statuses)].copy()
+                    df_download = df_po_final_real[df_po_final_real["Status"].isin(selected_statuses)].copy()
 
                     if not df_download.empty:
                         st.download_button(
                             label=f"⬇️Download {len(df_download):,} Baris Data (Filtered).xlsx",
-                            data=to_excel_bytes(df_download, sheet_name="Data_PR"),
-                            file_name=f"Data_PR_Export_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                            data=to_excel_bytes(df_download, sheet_name="Data_PO"),
+                            file_name=f"Data_PO_Export_{datetime.now().strftime('%Y%m%d')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                             key=f"download {len(df_download):,} Baris Data (Filtered)"   # 🔹 key unik
                         )
@@ -1501,370 +1476,370 @@ def main():
                     else:
                         st.warning("Tidak ada data yang sesuai dengan filter yang dipilih.")
                 else:
-                    st.info("Data PR tidak tersedia untuk export.")
+                    st.info("Data PO tidak tersedia untuk export.")
 
-            # Download per PIC PR
+            # Download per PIC PO
             with st.container(border=True):
-                st.subheader("📥 Download Data PR per PIC")
+                st.subheader("📥 Download Data PO per PIC")
 
-                if not df_pr_final_real.empty and "PIC Procurement" in df_pr_final_real.columns:
+                if not df_po_final_real.empty and "PIC Purchasing" in df_po_final_real.columns:
                     # Filter status hanya Need Approved, Approved, In Progress
-                    df_filtered_status = df_pr_final_real[
-                        df_pr_final_real["Status"].isin(["Approved", "In Progress", "Complete"])
+                    df_filtered_status = df_po_final_real[
+                        df_po_final_real["Status"].isin(["Approved", "In Progress", "Complete"])
                     ].copy()
 
                     # Tambahkan opsi "Semua"
                     options = ["Semua"] + sorted(
-                        df_filtered_status["PIC Procurement"].fillna("Unassigned").astype(str).unique().tolist()
+                        df_filtered_status["PIC Purchasing"].fillna("Unassigned").astype(str).unique().tolist()
                     )
 
-                    selected_pic = st.selectbox("Pilih PIC Procurement:", options, key="pr_pic_select")
+                    selected_pic = st.selectbox("Pilih PIC Purchasing:", options, key="po_pic_select")
 
                     # Jika pilih "Semua", ambil semua data sesuai status
                     if selected_pic == "Semua":
                         filtered = df_filtered_status.copy()
                     else:
                         filtered = df_filtered_status[
-                            df_filtered_status["PIC Procurement"].fillna("Unassigned").astype(str) == selected_pic
+                            df_filtered_status["PIC Purchasing"].fillna("Unassigned").astype(str) == selected_pic
                         ].copy()
 
                     st.download_button(
                         label=f"⬇️Download Data {selected_pic}.xlsx",
-                        data=to_excel_bytes(filtered, sheet_name="Data_PR"),
-                        file_name=f"Data_PR_{selected_pic}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        data=to_excel_bytes(filtered, sheet_name="Data_PO"),
+                        file_name=f"Data_PO_{selected_pic}_{datetime.now().strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                     st.caption(f"Menampilkan {len(filtered):,} baris data yang akan di-download.")
                 else:
-                    st.info("Data tidak tersedia untuk fitur download PR Balance per PIC.")
+                    st.info("Data tidak tersedia untuk fitur download PO Balance per PIC.")
 
 
     # =====================================================
-    # LEFT - DO
+    # LEFT - GRN
     # =====================================================
-    elif selected_doc_type == "DO":
+    elif selected_doc_type == "GRN":
         with col_kiri:
             with st.container(border=True):
-                st.subheader("📊 Detail DO")
+                st.subheader("📊 Detail GRN")
 
                 c1, c2 = st.columns(2)
                 with c1:
-                    metric_card("Total DO", f"Rp {total_do:,.0f}")
+                    metric_card("Total GRN", f"Rp {total_grn:,.0f}")
                 with c2:
-                    metric_card("DO Balance", f"Rp {total_do_unpr:,.0f}")
+                    metric_card("GRN Balance", f"Rp {total_grn_unpr:,.0f}")
 
                 c1, c2 = st.columns(2)
                 with c1:
-                    metric_card("Total Transaksi DO", f"{total_do_count:,}")
+                    metric_card("Total Transaksi GRN", f"{total_grn_count:,}")
                 with c2:
-                    metric_card("Total Transaksi DO Balance", f"{total_do_balance_count:,}")
+                    metric_card("Total Transaksi GRN Balance", f"{total_grn_balance_count:,}")
 
 
-                #st.write("Kolom:", df_pr_final_f.columns)
-                #st.write("Contoh tanggal:", df_pr_final_f["transaction_date"].head())
-                #st.write(df_pr_final_f[["item_price", "item_discount", "item_quantity"]].head())
+                #st.write("Kolom:", df_po_final_f.columns)
+                #st.write("Contoh tanggal:", df_po_final_f["transaction_date"].head())
+                #st.write(df_po_final_f[["item_price", "item_discount", "item_quantity"]].head())
 
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    metric_card("Total Item DO", f"{total_do_rows:,}")
+                    metric_card("Total Item GRN", f"{total_grn_rows:,}")
                 with c2:
-                    metric_card("Total Item DO Balance", total_do_balance_rows)
+                    metric_card("Total Item GRN Balance", total_grn_balance_rows)
                 with c3:
-                    metric_card("PIC Terbanyak", top_pic_do)
+                    metric_card("PIC Terbanyak", top_pic_grn)
 
 
-                do_summary = summarize_status(df_do_f, doc_col="No. DO", nominal_col="Nominal")
+                do_summary = summarize_status(df_grn_f, doc_col="No. GRN", nominal_col="Nominal")
 
                 with st.container(border=True):
-                    st.subheader("🍩 Proporsi Nominal DO Balance per Status")
-                    render_status_pie(do_summary, "Persentase Distribusi Nominal DO Balance")
+                    st.subheader("🍩 Proporsi Nominal GRN Balance per Status")
+                    render_status_pie(do_summary, "Persentase Distribusi Nominal GRN Balance")
 
-            pic_summary_do = summarize_pic_status(df_do_f, "PIC Procurement", "No. DO")
+            pic_summary_do = summarize_pic_status(df_grn_f, "PIC Purchasing", "No. GRN")
             with st.container(border=True):
-                st.subheader("👤 Analisis Transaksi DO Balance per PIC Procurement & per Status")
+                st.subheader("👤 Analisis Transaksi GRN Balance per PIC Purchasing & per Status")
                 render_pic_bar(
                     summary_df=pic_summary_do,
-                    x_col="PIC Procurement",
+                    x_col="PIC Purchasing",
                     y_col="Jumlah_Doc",
                     color_col="Status",
                 )
 
             with st.container(border=True):
-                st.subheader("🔥 Heatmap DO Balance - Aktivitas PIC Procurement")
-                render_pic_heatmap(df_do_f, "PIC Procurement", "transaction_date", "No. DO", "Heatmap Aktivitas PIC Procurement per Bulan")
+                st.subheader("🔥 Heatmap GRN Balance - Aktivitas PIC Purchasing")
+                render_pic_heatmap(df_grn_f, "PIC Purchasing", "transaction_date", "No. GRN", "Heatmap Aktivitas PIC Purchasing per Bulan")
 
-            # Download DO Balance by status
+            # Download GRN Balance by status
             with st.container(border=True):
-                st.subheader("📥 Download Data DO Balance (Periode & Status)")
+                st.subheader("📥 Download Data GRN Balance (Periode & Status)")
 
-                if not df_do_final_f.empty and "Status" in df_do_final_f.columns:
-                    all_statuses = sorted([s for s in df_do_final_f["Status"].dropna().astype(str).unique().tolist() if s.strip()])
+                if not df_grn_final_f.empty and "Status" in df_grn_final_f.columns:
+                    all_statuses = sorted([s for s in df_grn_final_f["Status"].dropna().astype(str).unique().tolist() if s.strip()])
                     selected_statuses = st.multiselect(
                         "Pilih Status untuk di-download:",
                         all_statuses,
                         default=all_statuses,
-                        key="do_balance_status_export"
+                        key="grn_balance_status_export"
                     )
 
-                    df_download_do_balance = df_do_final_f[df_do_final_f["Status"].isin(selected_statuses)].copy()
+                    df_download_grn_balance = df_grn_final_f[df_grn_final_f["Status"].isin(selected_statuses)].copy()
 
-                    if not df_download_do_balance.empty:
+                    if not df_download_grn_balance.empty:
                         st.download_button(
-                            label=f"⬇️Download {len(df_download_do_balance):,} Baris Data (Filtered).xlsx",
-                            data=to_excel_bytes(df_download_do_balance, sheet_name="Data_PR"),
-                            file_name=f"Data_DO_Export_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                            label=f"⬇️Download {len(df_download_grn_balance):,} Baris Data (Filtered).xlsx",
+                            data=to_excel_bytes(df_download_grn_balance, sheet_name="Data_GRN"),
+                            file_name=f"Data_GRN_Export_{datetime.now().strftime('%Y%m%d')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                         )
-                        st.caption(f"Menampilkan {len(df_download_do_balance):,} baris data yang akan di-download.")
+                        st.caption(f"Menampilkan {len(df_download_grn_balance):,} baris data yang akan di-download.")
                     else:
                         st.warning("Tidak ada data yang sesuai dengan filter yang dipilih.")
                 else:
-                    st.info("Data DO Balance tidak tersedia untuk export.")
+                    st.info("Data GRN Balance tidak tersedia untuk export.")
 
-            # Download per PIC PR Balance
+            # Download per PIC GRN Balance
             with st.container(border=True):
-                st.subheader("📥 Download Data DO Balance per PIC")
+                st.subheader("📥 Download Data GRN Balance per PIC")
 
-                if not df_do_final_f.empty and "PIC Procurement" in df_do_final_f.columns:
+                if not df_grn_final_f.empty and "PIC Purchasing" in df_grn_final_f.columns:
                     # Filter status hanya Need Approved, Approved, In Progress
-                    df_filtered_status = df_do_final_f[
-                        df_do_final_f["Status"].isin(["Need Approved", "Approved", "In Progress"])
+                    df_filtered_status = df_grn_final_f[
+                        df_grn_final_f["Status"].isin(["Need Approved", "Approved", "In Progress"])
                     ].copy()
 
                     # Tambahkan opsi "Semua"
                     options = ["Semua"] + sorted(
-                        df_filtered_status["PIC Procurement"].fillna("Unassigned").astype(str).unique().tolist()
+                        df_filtered_status["PIC Purchasing"].fillna("Unassigned").astype(str).unique().tolist()
                     )
 
-                    selected_pic = st.selectbox("Pilih PIC Procurement:", options, key="do_balance_pic_select")
+                    selected_pic = st.selectbox("Pilih PIC Purchasing:", options, key="grn_balance_pic_select")
 
                     # Jika pilih "Semua", ambil semua data sesuai status
                     if selected_pic == "Semua":
                         filtered = df_filtered_status.copy()
                     else:
                         filtered = df_filtered_status[
-                            df_filtered_status["PIC Procurement"].fillna("Unassigned").astype(str) == selected_pic
+                            df_filtered_status["PIC Purchasing"].fillna("Unassigned").astype(str) == selected_pic
                         ].copy()
 
                     st.download_button(
                         label=f"⬇️Download Data {selected_pic}.xlsx",
-                        data=to_excel_bytes(filtered, sheet_name="Data_DO_Balance"),
-                        file_name=f"Data_DO_balance_{selected_pic}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        data=to_excel_bytes(filtered, sheet_name="Data_GRN_Balance"),
+                        file_name=f"Data_GRN_balance_{selected_pic}_{datetime.now().strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
                     st.caption(f"Menampilkan {len(filtered):,} baris data yang akan di-download.")
                 else:
-                    st.info("Data tidak tersedia untuk fitur download DO Balance per PIC.")
+                    st.info("Data tidak tersedia untuk fitur download GRN Balance per PIC.")
 
     # =====================================================
-    # MID DO
+    # MID GRN
     # =====================================================
         with col_tengah:
 
-            # 🔹 Filter hanya DO yang sudah punya tanggal inprogress atau complete
-            #Aging DO
-            df_do_final_valid = df_do_final_real[
-            df_do_final_real["Status"].isin(["Approved", "In Progress", "Complete"])
+            # 🔹 Filter hanya GRN yang sudah punya tanggal inprogress atau complete
+            #Aging GRN
+            df_grn_final_valid = df_grn_final_real[
+            df_grn_final_real["Status"].isin(["Approved", "In Progress", "Complete"])
             ].copy()
-            df_do_final_valid = apply_search_filter(df_do_final_valid, search_number, search_status, search_pic)
+            df_grn_final_valid = apply_search_filter(df_grn_final_valid, search_number, search_status, search_pic)
 
-            #Aging DO Balance
-            # Filter DO Balance hanya untuk status aktif (exclude Complete & Draft)
-            df_do_valid = df_do_final_f[
-            ~df_do_final_f["Status"].isin(["Complete", "Draft"])
+            #Aging GRN Balance
+            # Filter GRN Balance hanya untuk status aktif (exclude Complete & Draft)
+            df_grn_valid = df_grn_final_f[
+            ~df_grn_final_f["Status"].isin(["Complete", "Draft"])
             ].copy()
-            df_do_valid = apply_search_filter(df_do_valid, search_number, search_status, search_pic)
+            df_grn_valid = apply_search_filter(df_grn_valid, search_number, search_status, search_pic)
 
 
-            # Lanjutkan proses aging hanya untuk DO yang valid
-            #Aging DO
-            df_do_final_valid = calculate_aging(df_do_final_valid, "transaction_date", prefer="approved")
-            df_do_final_valid = categorize_aging(df_do_final_valid)
-            #Aging DO Balance
-            df_do_valid = calculate_aging(df_do_valid, "transaction_date", prefer="approved")
-            df_do_valid = categorize_aging(df_do_valid)
+            # Lanjutkan proses aging hanya untuk GRN yang valid
+            #Aging GRN
+            df_grn_final_valid = calculate_aging(df_grn_final_valid, "transaction_date", prefer="approved")
+            df_grn_final_valid = categorize_aging(df_grn_final_valid)
+            #Aging GRN Balance
+            df_grn_valid = calculate_aging(df_grn_valid, "transaction_date", prefer="approved")
+            df_grn_valid = categorize_aging(df_grn_valid)
 
-            # Filter hanya DO valid aktif, exclude Draft
-            df_do_final_valid = df_do_final_valid[
-            ~df_do_final_valid["Status"].str.contains("Draft", case=False, na=False)
+            # Filter hanya GRN valid aktif, exclude Draft
+            df_grn_final_valid = df_grn_final_valid[
+            ~df_grn_final_valid["Status"].str.contains("Draft", case=False, na=False)
             ].copy()
 
             with st.container(border=True):
-                st.subheader("⏳ Distribusi Aging DO")
-                render_aging_bar(df_do_final_valid, "transaction_number", chart_key="aging_do")
+                st.subheader("⏳ Distribusi Aging GRN")
+                render_aging_bar(df_grn_final_valid, "transaction_number", chart_key="aging_grn")
 
             with st.container(border=True):
-                st.subheader("⏳ Distribusi Aging DO Balance")
-                render_aging_bar(df_do_valid, "transaction_number", chart_key="aging_do_outstanding")
+                st.subheader("⏳ Distribusi Aging GRN Balance")
+                render_aging_bar(df_grn_valid, "transaction_number", chart_key="aging_grn_outstanding")
 
 
-                pic_aging_summary_do = summarize_pic_aging(df_do_valid, "PIC Procurement", "transaction_number")
-                pic_aging_summary_final_do = summarize_pic_aging(df_do_final_valid, "PIC Procurement", "transaction_number")
+                pic_aging_summary_grn = summarize_pic_aging(df_grn_valid, "PIC Purchasing", "transaction_number")
+                pic_aging_summary_final_grn = summarize_pic_aging(df_grn_final_valid, "PIC Purchasing", "transaction_number")
 
             with st.container(border=True):
-                st.subheader("👥 Rata-rata Proses DO")
+                st.subheader("👥 Rata-rata Proses GRN")
                 #st.dataframe(pic_aging_summary, use_container_width=True, hide_index=True)
-                render_pic_aging_bar(pic_aging_summary_final_do)
+                render_pic_aging_bar(pic_aging_summary_final_grn)
 
             with st.container(border=True):
-                st.subheader("👥 Rata-rata Proses DO Balance")
+                st.subheader("👥 Rata-rata Proses GRN Balance")
                 #st.dataframe(pic_aging_summary, use_container_width=True, hide_index=True)
-                render_pic_aging_bar(pic_aging_summary_do)
+                render_pic_aging_bar(pic_aging_summary_grn)
 
 
-            # Download per Category DO Aging
+            # Download per Category GRN Aging
             with st.container(border=True):
-                st.subheader("📥 Download Data per Categori Aging DO")
+                st.subheader("📥 Download Data per Categori Aging GRN")
 
-                if not df_do_final_valid.empty:
-                    # Filter data aging DO berdasarkan kategori yang dipilih
-                    selected_category_do = st.selectbox(
-                        "Pilih kategori aging DO untuk diunduh 📂",
+                if not df_grn_final_valid.empty:
+                    # Filter data aging GRN berdasarkan kategori yang dipilih
+                    selected_category_grn = st.selectbox(
+                        "Pilih kategori aging GRN untuk diunduh 📂",
                         ["Semua", "0-30 hari", "31-60 hari", "61-90 hari", ">90 hari"]
                     )
 
                     # Jika bukan 'Semua', filter sesuai kategori
-                    if selected_category_do != "Semua":
-                        df_do_filtered = df_do_final_valid[
-                            df_do_final_valid["Aging Category"] == selected_category_do
+                    if selected_category_grn != "Semua":
+                        df_grn_filtered = df_grn_final_valid[
+                            df_grn_final_valid["Aging Category"] == selected_category_grn
                         ].copy()
                     else:
-                        df_do_filtered = df_do_final_valid.copy()
+                        df_grn_filtered = df_grn_final_valid.copy()
 
                     # Tombol download
                     st.download_button(
-                    label=f"⬇️Download Data DO Aging ({selected_category_do})",
-                    data=to_excel_bytes(df_do_filtered, sheet_name="DO Aging"),
-                    file_name=f"DO_Aging_{selected_category_do.replace(' ', '_')}.xlsx",
+                    label=f"⬇️Download Data GRN Aging ({selected_category_grn})",
+                    data=to_excel_bytes(df_grn_filtered, sheet_name="GRN Aging"),
+                    file_name=f"GRN_Aging_{selected_category_grn.replace(' ', '_')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"download_do_aging_{selected_category_do}"   # 🔹 key unik
+                    key=f"download_grn_aging_{selected_category_grn}"   # 🔹 key unik
                     )
 
                 else:
-                    st.info("Data tidak tersedia untuk fitur download per Category Aging DO.")
+                    st.info("Data tidak tersedia untuk fitur download per Category Aging GRN.")
 
-            # Download per Category DO Balance Aging
+            # Download per Category GRN Balance Aging
             with st.container(border=True):
-                st.subheader("📥 Download Data per Categori Aging DO Balance")
+                st.subheader("📥 Download Data per Categori Aging GRN Balance")
 
-                if not df_do_valid.empty:
-                    # Filter data aging DO berdasarkan kategori yang dipilih
-                    selected_category_do_balance = st.selectbox(
-                        "Pilih kategori aging DO Balance untuk diunduh 📂",
+                if not df_grn_valid.empty:
+                    # Filter data aging GRN berdasarkan kategori yang dipilih
+                    selected_category_grn_balance = st.selectbox(
+                        "Pilih kategori aging GRN Balance untuk diunduh 📂",
                         ["Semua", "0-30 hari", "31-60 hari", "61-90 hari", ">90 hari"]
                     )
 
                     # Jika bukan 'Semua', filter sesuai kategori
-                    if selected_category_do_balance != "Semua":
-                        df_balance_do_filtered = df_do_valid[
-                            df_do_valid["Aging Category"] == selected_category_do_balance
+                    if selected_category_grn_balance != "Semua":
+                        df_balance_grn_filtered = df_grn_valid[
+                            df_grn_valid["Aging Category"] == selected_category_grn_balance
                         ].copy()
                     else:
                         df_balance_do_filtered = df_do_valid.copy()
 
                     # Tombol download
                     st.download_button(
-                    label=f"⬇️Download Data DO Balance Aging ({selected_category_do_balance})",
-                    data=to_excel_bytes(df_balance_do_filtered, sheet_name="DO Balance Aging"),
-                    file_name=f"DO_Balance_Aging_{selected_category_do_balance.replace(' ', '_')}.xlsx",
+                    label=f"⬇️Download Data GRN Balance Aging ({selected_category_grn_balance})",
+                    data=to_excel_bytes(df_balance_grn_filtered, sheet_name="GRN Balance Aging"),
+                    file_name=f"GRN_Balance_Aging_{selected_category_grn_balance.replace(' ', '_')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    key=f"download_do_balance_{selected_category_do_balance}"   # 🔹 key unik
+                    key=f"download_grn_balance_{selected_category_grn_balance}"   # 🔹 key unik
                     )
 
                 else:
-                    st.info("Data tidak tersedia untuk fitur download per Category Aging DO Balance.")
+                    st.info("Data tidak tersedia untuk fitur download per Category Aging GRN Balance.")
 
     # =====================================================
     # RIGHT - DO
     # =====================================================
         with col_kanan:
             with st.container(border=True):
-                st.subheader("📏 SLA Compliance DO")
-                render_sla_gauge(df_do_final_valid, threshold=5, title="SLA Compliance DO")
+                st.subheader("📏 SLA Compliance GRN")
+                render_sla_gauge(df_grn_valid, threshold=5, title="SLA Compliance GRN")
 
             with st.container(border=True):
-                st.subheader("📏 SLA Compliance DO Balance")
-                render_sla_gauge(df_do_valid, threshold=5, title="SLA Compliance DO Balance")
+                st.subheader("📏 SLA Compliance GRN Balance")
+                render_sla_gauge(df_grn_valid, threshold=5, title="SLA Compliance GRN Balance")
 
-            pic_sla_summary_do = summarize_pic_sla(df_do_final_valid, "PIC Procurement", "transaction_number", threshold=5)
+            pic_sla_summary_grn = summarize_pic_sla(df_grn_valid, "PIC Purchasing", "transaction_number", threshold=5)
 
             with st.container(border=True):
-                st.subheader("📏 SLA Compliance per PIC Procurement")
+                st.subheader("📏 SLA Compliance per PIC Purchasing")
                 #st.dataframe(pic_sla_summary, use_container_width=True, hide_index=True)
-                render_pic_sla_bar(pic_sla_summary_do)
+                render_pic_sla_bar(pic_sla_summary_grn)
 
             with st.container(border=True):
                 st.subheader("📈 Trend SLA")
-                render_sla_trend(df_do_final_valid, threshold=5, date_col="transaction_date")
+                render_sla_trend(df_grn_valid, threshold=5, date_col="transaction_date")
 
 
-            # Download DO by period & status
+            # Download GRN by period & status
             with st.container(border=True):
-                st.subheader("📥 Download Data DO (Periode & Status)")
+                st.subheader("📥 Download Data GRN (Periode & Status)")
 
-                if not df_do_final_real.empty and "Status" in df_do_final_real.columns:
-                    all_statuses_do = sorted([s for s in df_do_final_real["Status"].dropna().astype(str).unique().tolist() if s.strip()])
-                    selected_statuses_do = st.multiselect(
+                if not df_grn_valid.empty and "Status" in df_grn_valid.columns:
+                    all_statuses_grn = sorted([s for s in df_grn_valid["Status"].dropna().astype(str).unique().tolist() if s.strip()])
+                    selected_statuses_grn = st.multiselect(
                         "Pilih Status untuk di-download:",
-                        all_statuses_do,
-                        default=all_statuses_do,
-                        key="do_status_export"
+                        all_statuses_grn,
+                        default=all_statuses_grn,
+                        key="grn_status_export"
                     )
 
-                    df_download_do = df_do_final_real[df_do_final_real["Status"].isin(selected_statuses_do)].copy()
+                    df_download_grn = df_grn_valid[df_grn_valid["Status"].isin(selected_statuses_grn)].copy()
 
-                    if not df_download_do.empty:
+                    if not df_download_grn.empty:
                         st.download_button(
-                            label=f"⬇️Download {len(df_download_do):,} Baris Data (Filtered).xlsx",
-                            data=to_excel_bytes(df_download_do, sheet_name="Data_DO"),
-                            file_name=f"Data_DO_Export_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                            label=f"⬇️Download {len(df_download_grn):,} Baris Data (Filtered).xlsx",
+                            data=to_excel_bytes(df_download_grn, sheet_name="Data_GRN"),
+                            file_name=f"Data_GRN_Export_{datetime.now().strftime('%Y%m%d')}.xlsx",
                             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                            key=f"download {len(df_download_do):,} Baris Data (Filtered)"   # 🔹 key unik
+                            key=f"download {len(df_download_grn):,} Baris Data (Filtered)"   # 🔹 key unik
                         )
-                        st.caption(f"Menampilkan {len(df_download_do):,} baris data yang akan di-download.")
+                        st.caption(f"Menampilkan {len(df_download_grn):,} baris data yang akan di-download.")
                     else:
                         st.warning("Tidak ada data yang sesuai dengan filter yang dipilih.")
                 else:
-                    st.info("Data DO tidak tersedia untuk export.")
+                    st.info("Data GRN tidak tersedia untuk export.")
 
-            # Download per PIC DO
+            # Download per PIC GRN
             with st.container(border=True):
-                st.subheader("📥 Download Data DO per PIC")
+                st.subheader("📥 Download Data GRN per PIC")
 
-                if not df_do_final_real.empty and "PIC Procurement" in df_do_final_real.columns:
+                if not df_grn_valid.empty and "PIC Purchasing" in df_grn_valid.columns:
                     # Filter status hanya Need Approved, Approved, In Progress
-                    df_filtered_status_do = df_do_final_real[
-                        df_do_final_real["Status"].isin(["Approved", "In Progress", "Complete"])
+                    df_filtered_status_grn = df_grn_valid[
+                        df_grn_valid["Status"].isin(["Approved", "In Progress", "Complete"])
                     ].copy()
 
                     # Tambahkan opsi "Semua"
                     options = ["Semua"] + sorted(
-                        df_filtered_status_do["PIC Procurement"].fillna("Unassigned").astype(str).unique().tolist()
+                        df_filtered_status_grn["PIC Purchasing"].fillna("Unassigned").astype(str).unique().tolist()
                     )
 
-                    selected_pic_do = st.selectbox("Pilih PIC Procurement:", options, key="pr_pic_select")
+                    selected_pic_grn = st.selectbox("Pilih PIC Purchasing:", options, key="pr_pic_select")
 
                     # Jika pilih "Semua", ambil semua data sesuai status
-                    if selected_pic_do == "Semua":
-                        filtered_do = df_filtered_status_do.copy()
+                    if selected_pic_grn == "Semua":
+                        filtered_grn = df_filtered_status_grn.copy()
                     else:
-                        filtered_do = df_filtered_status_do[
-                            df_filtered_status_do["PIC Procurement"].fillna("Unassigned").astype(str) == selected_pic_do
+                        filtered_grn = df_filtered_status_grn[
+                            df_filtered_status_grn["PIC Purchasing"].fillna("Unassigned").astype(str) == selected_pic_grn
                         ].copy()
 
                     st.download_button(
-                        label=f"⬇️Download Data {selected_pic_do}.xlsx",
-                        data=to_excel_bytes(filtered_do, sheet_name="Data_DO"),
-                        file_name=f"Data_DO_{selected_pic}_{datetime.now().strftime('%Y%m%d')}.xlsx",
+                        label=f"⬇️Download Data {selected_pic_grn}.xlsx",
+                        data=to_excel_bytes(filtered_grn, sheet_name="Data_GRN"),
+                        file_name=f"Data_GRN_{selected_pic_grn}_{datetime.now().strftime('%Y%m%d')}.xlsx",
                         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     )
-                    st.caption(f"Menampilkan {len(filtered_do):,} baris data yang akan di-download.")
+                    st.caption(f"Menampilkan {len(filtered_grn):,} baris data yang akan di-download.")
                 else:
-                    st.info("Data tidak tersedia untuk fitur download DO Balance per PIC.")
+                    st.info("Data tidak tersedia untuk fitur download GRN Balance per PIC.")
 
 
     # =====================================================
-    # CRUD langsung ke df_pr_final_valid
+    # CRUD langsung ke df_po_final_valid
     # =====================================================
 
     elif selected_doc_type == "CRUD":
