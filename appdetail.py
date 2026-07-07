@@ -1860,10 +1860,18 @@ def main():
         # Merge data API dan ETA
         df_po_ed = pd.merge(df_po_api, df_po_eta, on="Nomor_Dokumen", how="left")
 
-        # Form CRUD
+        # Ambil daftar PIC dari data API
+        if "PIC Purchasing" in df_po_api.columns:
+            pic_options = sorted(df_po_api["PIC Purchasing"].dropna().unique().tolist())
+        else:
+            pic_options = []
+
         with st.form("form_eta_deadline"):
             nomor_dokumen = st.text_input("Nomor Dokumen")
-            pic = st.text_input("PIC")
+
+            # 🔹 Dropdown PIC
+            pic = st.selectbox("PIC", options=pic_options)
+
             eta_po = st.date_input("ETA PO", value=None)
             deadline_do = st.date_input("Deadline DO", value=None)
             deadline_si = st.date_input("Deadline SI", value=None)
@@ -1883,6 +1891,7 @@ def main():
 
             # Merge ulang setelah simpan/hapus
             df_po_ed = pd.merge(df_po_api, df_po_eta, on="Nomor_Dokumen", how="left")
+
 
         # ✅ Pisahkan tabel sudah diisi vs belum diisi
         df_sudah = df_po_ed.dropna(subset=["ETA_PO","Deadline_DO","Deadline_SI"], how="any")
