@@ -1062,6 +1062,10 @@ def main():
 
     # Pastikan kolom PIC dan Status sesuai
     #PO
+    df_po = df_po.rename(columns={
+        "Status PO": "Status"
+    })
+    #PO Final
     df_po_final = df_po_final.rename(columns={
         "item_pic_purchasing_name": "PIC Purchasing",
         "status_description": "Status",
