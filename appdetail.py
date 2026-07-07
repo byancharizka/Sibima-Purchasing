@@ -1892,9 +1892,27 @@ def main():
         st.dataframe(df_sudah[["Nomor_Dokumen","PIC","ETA_PO","Deadline_DO","Deadline_SI"]],
                     use_container_width=True)
 
+        # 🔹 Tombol download untuk tabel sudah diisi
+        excel_sudah = to_excel_bytes(df_sudah[["Nomor_Dokumen","PIC","ETA_PO","Deadline_DO","Deadline_SI"]])
+        st.download_button(
+            label="⬇️ Download Data Sudah Diisi (Excel)",
+            data=excel_sudah,
+            file_name="ETA_Deadline_Sudah_Diisi.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
         st.write("📄 Data ETA & Deadline **Belum Diisi**:")
         st.dataframe(df_belum[["Nomor_Dokumen","PIC"]],
                     use_container_width=True)
+    
+        # 🔹 Tombol download untuk tabel belum diisi
+        excel_belum = to_excel_bytes(df_belum[["Nomor_Dokumen","PIC"]])
+        st.download_button(
+            label="⬇️ Download Data Belum Diisi (Excel)",
+            data=excel_belum,
+            file_name="ETA_Deadline_Belum_Diisi.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 
     # ---------- FOOTER INFO ----------
