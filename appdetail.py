@@ -1754,13 +1754,13 @@ def main():
         with col_kanan:
             with st.container(border=True):
                 st.subheader("📏 SLA Compliance GRN")
-                render_sla_gauge(df_grn_valid, threshold=5, title="SLA Compliance GRN")
+                render_sla_gauge(df_grn_final_valid, threshold=5, title="SLA Compliance GRN")
 
             with st.container(border=True):
                 st.subheader("📏 SLA Compliance GRN Balance")
                 render_sla_gauge(df_grn_valid, threshold=5, title="SLA Compliance GRN Balance")
 
-            pic_sla_summary_grn = summarize_pic_sla(df_grn_valid, "PIC Purchasing", "transaction_number", threshold=5)
+            pic_sla_summary_grn = summarize_pic_sla(df_grn_final_valid, "PIC Purchasing", "transaction_number", threshold=5)
 
             with st.container(border=True):
                 st.subheader("📏 SLA Compliance per PIC Purchasing")
@@ -1769,15 +1769,15 @@ def main():
 
             with st.container(border=True):
                 st.subheader("📈 Trend SLA")
-                render_sla_trend(df_grn_valid, threshold=5, date_col="transaction_date")
+                render_sla_trend(df_grn_final_valid, threshold=5, date_col="transaction_date")
 
 
             # Download GRN by period & status
             with st.container(border=True):
                 st.subheader("📥 Download Data GRN (Periode & Status)")
 
-                if not df_grn_valid.empty and "Status" in df_grn_valid.columns:
-                    all_statuses_grn = sorted([s for s in df_grn_valid["Status"].dropna().astype(str).unique().tolist() if s.strip()])
+                if not df_grn_final_valid.empty and "Status" in df_grn_final_valid.columns:
+                    all_statuses_grn = sorted([s for s in df_grn_final_valid["Status"].dropna().astype(str).unique().tolist() if s.strip()])
                     selected_statuses_grn = st.multiselect(
                         "Pilih Status untuk di-download:",
                         all_statuses_grn,
@@ -1785,7 +1785,7 @@ def main():
                         key="grn_status_export"
                     )
 
-                    df_download_grn = df_grn_valid[df_grn_valid["Status"].isin(selected_statuses_grn)].copy()
+                    df_download_grn = df_grn_final_valid[df_grn_final_valid["Status"].isin(selected_statuses_grn)].copy()
 
                     if not df_download_grn.empty:
                         st.download_button(
@@ -1805,10 +1805,10 @@ def main():
             with st.container(border=True):
                 st.subheader("📥 Download Data GRN per PIC")
 
-                if not df_grn_valid.empty and "PIC Purchasing" in df_grn_valid.columns:
+                if not df_grn_final_valid.empty and "PIC Purchasing" in df_grn_final_valid.columns:
                     # Filter status hanya Need Approved, Approved, In Progress
-                    df_filtered_status_grn = df_grn_valid[
-                        df_grn_valid["Status"].isin(["Approved", "In Progress", "Complete"])
+                    df_filtered_status_grn = df_grn_final_valid[
+                        df_grn_final_valid["Status"].isin(["Approved", "In Progress", "Complete"])
                     ].copy()
 
                     # Tambahkan opsi "Semua"
