@@ -1842,59 +1842,59 @@ def main():
     # =====================================================
 
     elif selected_doc_type == "CRUD":
-    st.subheader("📌 CRUD ETA & Deadline")
+        st.subheader("📌 CRUD ETA & Deadline")
 
-    # Ambil data dari API
-    df_po_api = df_po_final_f[
-        ~df_po_final_f["Status"].isin(["Complete", "Draft"])
-    ].copy()
-    df_po_api = apply_search_filter(df_po_api, search_number, search_status, search_pic)
+        # Ambil data dari API
+        df_po_api = df_po_final_f[
+            ~df_po_final_f["Status"].isin(["Complete", "Draft"])
+        ].copy()
+        df_po_api = apply_search_filter(df_po_api, search_number, search_status, search_pic)
 
-    if "transaction_number" in df_po_api.columns:
-        df_po_api["Nomor_Dokumen"] = df_po_api["transaction_number"].astype(str).str.strip()
+        if "transaction_number" in df_po_api.columns:
+            df_po_api["Nomor_Dokumen"] = df_po_api["transaction_number"].astype(str).str.strip()
 
-    # Ambil data ETA dari SQLite
-    init_db()
-    df_po_eta = load_eta_data()
+        # Ambil data ETA dari SQLite
+        init_db()
+        df_po_eta = load_eta_data()
 
-    # Merge data API dan ETA
-    df_po_ed = pd.merge(df_po_api, df_po_eta, on="Nomor_Dokumen", how="left")
-
-    # Form CRUD
-    with st.form("form_eta_deadline"):
-        nomor_dokumen = st.text_input("Nomor Dokumen")
-        pic = st.text_input("PIC")
-        eta_po = st.date_input("ETA PO", value=None)
-        deadline_do = st.date_input("Deadline DO", value=None)
-        deadline_si = st.date_input("Deadline SI", value=None)
-
-        simpan = st.form_submit_button("Simpan")
-        hapus = st.form_submit_button("Hapus Data")
-
-        if simpan:
-            save_eta_data(nomor_dokumen, pic, eta_po, deadline_do, deadline_si)
-            st.success(f"Data ETA/Deadline untuk dokumen {nomor_dokumen} berhasil disimpan.")
-            df_po_eta = load_eta_data()
-
-        if hapus:
-            delete_eta_data(nomor_dokumen)
-            st.success(f"Data untuk dokumen {nomor_dokumen} berhasil dihapus.")
-            df_po_eta = load_eta_data()
-
-        # Merge ulang setelah simpan/hapus
+        # Merge data API dan ETA
         df_po_ed = pd.merge(df_po_api, df_po_eta, on="Nomor_Dokumen", how="left")
 
-    # ✅ Pisahkan tabel sudah diisi vs belum diisi
-    df_sudah = df_po_ed.dropna(subset=["ETA_PO","Deadline_DO","Deadline_SI"], how="any")
-    df_belum = df_po_ed[df_po_ed[["ETA_PO","Deadline_DO","Deadline_SI"]].isna().any(axis=1)]
+        # Form CRUD
+        with st.form("form_eta_deadline"):
+            nomor_dokumen = st.text_input("Nomor Dokumen")
+            pic = st.text_input("PIC")
+            eta_po = st.date_input("ETA PO", value=None)
+            deadline_do = st.date_input("Deadline DO", value=None)
+            deadline_si = st.date_input("Deadline SI", value=None)
 
-    st.write("📄 Data ETA & Deadline **Sudah Diisi**:")
-    st.dataframe(df_sudah[["Nomor_Dokumen","PIC","ETA_PO","Deadline_DO","Deadline_SI"]],
-                 use_container_width=True)
+            simpan = st.form_submit_button("Simpan")
+            hapus = st.form_submit_button("Hapus Data")
 
-    st.write("📄 Data ETA & Deadline **Belum Diisi**:")
-    st.dataframe(df_belum[["Nomor_Dokumen","PIC"]],
-                 use_container_width=True)
+            if simpan:
+                save_eta_data(nomor_dokumen, pic, eta_po, deadline_do, deadline_si)
+                st.success(f"Data ETA/Deadline untuk dokumen {nomor_dokumen} berhasil disimpan.")
+                df_po_eta = load_eta_data()
+
+            if hapus:
+                delete_eta_data(nomor_dokumen)
+                st.success(f"Data untuk dokumen {nomor_dokumen} berhasil dihapus.")
+                df_po_eta = load_eta_data()
+
+            # Merge ulang setelah simpan/hapus
+            df_po_ed = pd.merge(df_po_api, df_po_eta, on="Nomor_Dokumen", how="left")
+
+        # ✅ Pisahkan tabel sudah diisi vs belum diisi
+        df_sudah = df_po_ed.dropna(subset=["ETA_PO","Deadline_DO","Deadline_SI"], how="any")
+        df_belum = df_po_ed[df_po_ed[["ETA_PO","Deadline_DO","Deadline_SI"]].isna().any(axis=1)]
+
+        st.write("📄 Data ETA & Deadline **Sudah Diisi**:")
+        st.dataframe(df_sudah[["Nomor_Dokumen","PIC","ETA_PO","Deadline_DO","Deadline_SI"]],
+                    use_container_width=True)
+
+        st.write("📄 Data ETA & Deadline **Belum Diisi**:")
+        st.dataframe(df_belum[["Nomor_Dokumen","PIC"]],
+                    use_container_width=True)
 
 
     # ---------- FOOTER INFO ----------
