@@ -1734,7 +1734,7 @@ def main():
                             df_grn_valid["Aging Category"] == selected_category_grn_balance
                         ].copy()
                     else:
-                        df_balance_do_filtered = df_do_valid.copy()
+                        df_balance_grn_filtered = df_grn_valid.copy()
 
                     # Tombol download
                     st.download_button(
