@@ -1073,12 +1073,14 @@ def main():
     })
     #GRN
     df_grn_final = df_grn_final.rename(columns={
-        "item_pic_procurement_name": "PIC Purchasing",
+        "item_pic_purchasing_name": "PIC Purchasing",
         "status_description": "Status"
     })
-
+    #GRN Final
     df_grn = df_grn.rename(columns={
-        "Status GRN": "Status"
+        "item_pic_purchasing_name": "PIC Purchasing",
+        "Status GRN": "Status",
+
     })
 
     # Pastikan kolom tanggal sudah dalam format datetime
