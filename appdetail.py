@@ -1192,7 +1192,7 @@ def main():
                 with c1:
                     metric_card("Total PO", f"Rp {total_po:,.0f}")
                 with c2:
-                    metric_card("PO Balance", f"Rp {total_po:,.0f}")
+                    metric_card("PO Balance", f"Rp {total_po_unpr:,.0f}")
 
                 c1, c2 = st.columns(2)
                 with c1:
