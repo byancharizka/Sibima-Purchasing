@@ -1911,7 +1911,7 @@ def main():
         )
 
         st.write("📄 Data ETA & Deadline **Belum Diisi**:")
-        st.dataframe(df_belum[["Nomor_Dokumen","PIC"]],
+        st.dataframe(df_belum,
                     use_container_width=True)
     
         # 🔹 Tombol download untuk tabel belum diisi
