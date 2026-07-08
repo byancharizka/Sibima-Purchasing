@@ -439,7 +439,7 @@ def apply_search_filter(
     working = df.copy()
     working = normalize_text_columns(
         working,
-        ["Status", "PIC Purchasing", "PIC Purchasing", "PIC", "No. PR", "No. DO", "No. PUR", "No. Transaksi"]
+        ["Status", "PIC Purchasing", "PIC", "No. PO", "No. GRN", "No. PUR", "No. Transaksi"]
     )
 
     # Filter nomor transaksi: mencari di semua kolom string
@@ -696,7 +696,7 @@ def render_pic_heatmap(df: pd.DataFrame, pic_col: str, date_col: str, doc_col: s
         "<div style='text-align:center; font-size:0.8rem; color:#6f6f6f;'>"
         "📝 <b>Keterangan:</b> " \
         "Kotak dengan warna mendekati merah artinya punya outstanding PR yang lebih banyak sedangkan " \
-        "kotak dengan warna mendekati biru artinya outstanding PRnya lebih sedikit"
+        "kotak dengan warna mendekati hijau artinya outstanding PRnya lebih sedikit"
         "</div>",
         unsafe_allow_html=True
     )
@@ -1080,7 +1080,6 @@ def main():
     df_grn = df_grn.rename(columns={
         #"item_pic_purchasing_name": "PIC Purchasing",
         "Status GRN": "Status",
-
     })
     #GRN Final
     df_grn_final = df_grn_final.rename(columns={
@@ -1196,6 +1195,7 @@ def main():
     #df_po_final_valid = df_po_final_real[
     #df_po_final_real["date_inprogress"].notna() | df_po_final_real["date_complete"].notna()
     #].copy()
+    #PO
     df_po_final_valid = df_po_final_real[
     df_po_final_real["Status"].isin(["Approved", "In Progress", "Complete"])
     ].copy()
@@ -1209,17 +1209,6 @@ def main():
     df_po_valid = apply_search_filter(df_po_valid, search_number, search_status, search_pic)
 
 
-    # Lanjutkan proses aging hanya untuk PO yang valid
-    #Aging PO
-    #df_po_final_valid = calculate_aging(df_po_final_valid, "transaction_date")
-    df_po_final_valid = calculate_aging(df_po_final_valid, "transaction_date", prefer="approved")
-    df_po_final_valid = categorize_aging(df_po_final_valid)
-    #Aging PO Balance
-    #df_po_valid = calculate_aging(df_po_valid, "transaction_date")
-    df_po_valid = calculate_aging(df_po_valid, "transaction_date", prefer="approved")
-    df_po_valid = categorize_aging(df_po_valid)
-    #df_po_valid = df_po_valid.drop_duplicates(subset=["transaction_number"])
-
     # Filter hanya PO valid aktif, exclude Draft
     df_po_final_valid = df_po_final_valid[
     ~df_po_final_valid["Status"].str.contains("Draft", case=False, na=False)
@@ -1228,6 +1217,21 @@ def main():
     #df_po_valid = df_po_valid[
     #~df_po_valid["Status"].str.contains("Draft", case=False, na=False)
     #].copy()
+
+    #GRN
+    # 🔹 Filter hanya GRN yang sudah punya tanggal inprogress atau complete
+    #Aging GRN
+    df_grn_final_valid = df_grn_final_real[
+    df_grn_final_real["Status"].isin(["Approved", "In Progress", "Complete"])
+    ].copy()
+    df_grn_final_valid = apply_search_filter(df_grn_final_valid, search_number, search_status, search_pic)
+
+    #Aging GRN Balance
+    # Filter GRN Balance hanya untuk status aktif (exclude Complete & Draft)
+    df_grn_valid = df_grn_final_f[
+    ~df_grn_final_f["Status"].isin(["Complete", "Draft"])
+    ].copy()
+    df_grn_valid = apply_search_filter(df_grn_valid, search_number, search_status, search_pic)
 
     # =====================================================
     # LEFT - PO
@@ -1282,6 +1286,9 @@ def main():
             with st.container(border=True):
                 st.subheader("🔥 Heatmap PO Balance - Aktivitas PIC Purchasing")
                 render_pic_heatmap(df_po_f, "PIC Purchasing", "transaction_date", "No. PO", "Heatmap Aktivitas PIC Purchasing per Bulan")
+
+                #st.write(df_po_f.head())
+
 
             # Download PO Balance by status
             with st.container(border=True):
@@ -1351,6 +1358,16 @@ def main():
     # MID PR
     # =====================================================
         with col_tengah:
+            # Lanjutkan proses aging hanya untuk PO yang valid
+            #Aging PO
+            #df_po_final_valid = calculate_aging(df_po_final_valid, "transaction_date")
+            df_po_final_valid = calculate_aging(df_po_final_valid, "transaction_date", prefer="approved")
+            df_po_final_valid = categorize_aging(df_po_final_valid)
+            #Aging PO Balance
+            #df_po_valid = calculate_aging(df_po_valid, "transaction_date")
+            df_po_valid = calculate_aging(df_po_valid, "transaction_date", prefer="approved")
+            df_po_valid = categorize_aging(df_po_valid)
+            #df_po_valid = df_po_valid.drop_duplicates(subset=["transaction_number"])
 
             with st.container(border=True):
                 st.subheader("⏳ Distribusi Aging PO")
@@ -1580,6 +1597,9 @@ def main():
                 st.subheader("🔥 Heatmap GRN Balance - Aktivitas PIC Purchasing")
                 render_pic_heatmap(df_grn_f, "PIC Purchasing", "transaction_date", "No. GRN", "Heatmap Aktivitas PIC Purchasing per Bulan")
 
+
+                #st.write(df_grn_f.head())
+
             # Download GRN Balance by status
             with st.container(border=True):
                 st.subheader("📥 Download Data GRN Balance (Periode & Status)")
@@ -1648,21 +1668,6 @@ def main():
     # MID GRN
     # =====================================================
         with col_tengah:
-
-            # 🔹 Filter hanya GRN yang sudah punya tanggal inprogress atau complete
-            #Aging GRN
-            df_grn_final_valid = df_grn_final_real[
-            df_grn_final_real["Status"].isin(["Approved", "In Progress", "Complete"])
-            ].copy()
-            df_grn_final_valid = apply_search_filter(df_grn_final_valid, search_number, search_status, search_pic)
-
-            #Aging GRN Balance
-            # Filter GRN Balance hanya untuk status aktif (exclude Complete & Draft)
-            df_grn_valid = df_grn_final_f[
-            ~df_grn_final_f["Status"].isin(["Complete", "Draft"])
-            ].copy()
-            df_grn_valid = apply_search_filter(df_grn_valid, search_number, search_status, search_pic)
-
 
             # Lanjutkan proses aging hanya untuk GRN yang valid
             #Aging GRN
