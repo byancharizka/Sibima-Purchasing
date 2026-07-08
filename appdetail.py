@@ -1604,8 +1604,8 @@ def main():
             with st.container(border=True):
                 st.subheader("📥 Download Data GRN Balance (Periode & Status)")
 
-                if not df_grn_final_f.empty and "Status" in df_grn_final_f.columns:
-                    all_statuses = sorted([s for s in df_grn_final_f["Status"].dropna().astype(str).unique().tolist() if s.strip()])
+                if not df_grn_valid.empty and "Status" in df_grn_valid.columns:
+                    all_statuses = sorted([s for s in df_grn_valid["Status"].dropna().astype(str).unique().tolist() if s.strip()])
                     selected_statuses = st.multiselect(
                         "Pilih Status untuk di-download:",
                         all_statuses,
@@ -1613,7 +1613,7 @@ def main():
                         key="grn_balance_status_export"
                     )
 
-                    df_download_grn_balance = df_grn_final_f[df_grn_final_f["Status"].isin(selected_statuses)].copy()
+                    df_download_grn_balance = df_grn_valid[df_grn_valid["Status"].isin(selected_statuses)].copy()
 
                     if not df_download_grn_balance.empty:
                         st.download_button(
@@ -1632,9 +1632,9 @@ def main():
             with st.container(border=True):
                 st.subheader("📥 Download Data GRN Balance per PIC")
 
-                if not df_grn_final_f.empty and "PIC Purchasing" in df_grn_final_f.columns:
+                if not df_grn_valid.empty and "PIC Purchasing" in df_grn_valid.columns:
                     # Filter status hanya Need Approve, Approved, In Progress
-                    df_filtered_status = df_grn_final_f
+                    df_filtered_status = df_grn_valid.copy()
                     #[
                         #df_grn_final_f["Status"].isin(["Need Approve", "Approved", "In Progress"])
                     #].copy()
