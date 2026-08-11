@@ -430,8 +430,8 @@ def apply_realization_filter(df: pd.DataFrame, start_date_val, end_date_val) -> 
 def apply_search_filter(
     df: pd.DataFrame,
     search_number: str = "",
-    search_status: str = "",
-    search_pic: str = ""
+    search_status: str = "Semua Status",
+    search_pic: str = "Semua PIC"
 ) -> pd.DataFrame:
     if df.empty:
         return df.copy()
@@ -439,10 +439,10 @@ def apply_search_filter(
     working = df.copy()
     working = normalize_text_columns(
         working,
-        ["Status", "PIC Purchasing", "PIC", "No. PO", "No. GRN", "No. PUR", "No. Transaksi"]
+        ["Status", "Status_so", "PIC Procurement", "PIC Purchasing", "PIC", "No. PR", "No. DO", "No. PUR", "No. Transaksi"]
     )
 
-    # Filter nomor transaksi: mencari di semua kolom string
+    # Filter nomor transaksi
     if search_number:
         pattern = search_number.strip().lower()
         string_cols = working.select_dtypes(include=["object"]).columns.tolist()
@@ -452,18 +452,19 @@ def apply_search_filter(
             ).any(axis=1)
             working = working[mask_number]
 
-    # Filter status
-    if search_status and "Status" in working.columns:
-        working = working[
-            working["Status"].str.contains(search_status.strip(), case=False, na=False)
-        ]
+    # Filter Status khusus SO saja
+    if search_status and search_status != "Semua Status":
+        if "Status_so" in working.columns:
+            working = working[
+                working["Status_so"].str.strip().str.lower() == search_status.strip().lower()
+            ]
 
-    # Filter PIC -> OR logic, bukan AND
-    if search_pic:
-        pic_cols = [col for col in ["PIC Purchasing", "PIC Purchasing", "PIC"] if col in working.columns]
+    # Filter PIC Procurement via Dropdown
+    if search_pic and search_pic != "Semua PIC":
+        pic_cols = [col for col in ["PIC Procurement", "item_pic_procurement_name", "PIC Purchasing", "PIC"] if col in working.columns]
         if pic_cols:
             mask_pic = working[pic_cols].apply(
-                lambda col: col.str.contains(search_pic.strip(), case=False, na=False)
+                lambda col: col.str.strip().str.lower() == search_pic.strip().lower()
             ).any(axis=1)
             working = working[mask_pic]
 
@@ -1038,9 +1039,6 @@ def main():
     with col_head4:
         search_status = st.text_input("Cari Status 🔍", placeholder="Complete / In Progress / Approved / Need Approve")
 
-    with col_head5:
-        search_pic = st.text_input("Cari PIC 🔍", placeholder="PIC Purchasing")
-
     # ---------- LOAD DATA ----------
     if isinstance(selected_date_range, (tuple, list)) and len(selected_date_range) == 2:
         start_date, end_date = selected_date_range
@@ -1099,6 +1097,25 @@ def main():
     df_grn_final = safe_to_datetime(df_grn_final, "date_inprogress")
     df_grn_final = safe_to_datetime(df_grn_final, "date_complete")
 
+            # ---------- EXTRACT UNIQUE PIC LIST ----------
+    # Ambil list PIC Procurement unik dari df_pr_final (dan dataframe lain jika perlu)
+    pic_list = []
+    if "PIC Purchasing" in df_po_final.columns:
+        pic_list = df_po_final["PIC Purchasing"].dropna().astype(str).str.strip()
+        pic_list = [pic for pic in pic_list.unique() if pic != "" and pic.lower() != "nan"]
+        pic_list.sort()
+
+    # Tambahkan opsi 'Semua PIC' di urutan pertama
+    pic_options = ["Semua PIC"] + pic_list
+
+    # ---------- TOP FILTERS (Tahap 2: Dropdown PIC) ----------
+    with col_head5:
+        search_pic = st.selectbox(
+            "Pilih PIC Purchasing 👤",
+            options=pic_options,
+            index=0
+        )
+
     # ---------- DEFAULT SAFE COPY ----------
     df_po_f = df_po.copy()
     df_grn_f = df_grn.copy()
@@ -1123,6 +1140,8 @@ def main():
 
     # ---------- SEARCH FILTER ----------
     df_po_f = apply_search_filter(df_po_f, search_number, search_status, search_pic)
+    df_po_final_f = apply_search_filter(df_po_final_f, search_number, search_status, search_pic)
+    df_po_final_real = apply_search_filter(df_po_final_real, search_number, search_status, search_pic)
     df_grn_f = apply_search_filter(df_grn_f, search_number, search_status, search_pic)
     df_do_f = apply_search_filter(df_do_f, search_number, search_status, search_pic)
     #df_pur_f = apply_search_filter(df_pur_f, search_number, search_status, search_pic)
